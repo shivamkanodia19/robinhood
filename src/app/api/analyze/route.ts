@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { computeStockMetrics } from "@/lib/metrics/calculator";
 import { buildConsensus } from "@/lib/consensus";
-import { runAllAgents } from "@/lib/agents/runAgents";
+import { runAllAgentsWithDiagnostics } from "@/lib/agents/runAgents";
 import { ruleBasedVotes } from "@/lib/agents/ruleFallback";
 import { hasAnthropic, hasSupabase } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -58,9 +58,29 @@ export async function POST(req: Request) {
     : "claude-3-5-haiku-20241022";
   const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
 
-  const votes = hasAnthropic()
-    ? await runAllAgents(apiKey, model, metrics)
-    : ruleBasedVotes(metrics);
+  const modelDiagnostics = {
+    used_rule_fallback: false,
+    failed_agents: [] as string[],
+    errors: [] as string[],
+  };
+  let votes = ruleBasedVotes(metrics);
+  if (hasAnthropic()) {
+    const llm = await runAllAgentsWithDiagnostics(apiKey, model, metrics);
+    const allFailed = llm.votes.every((v) => v.confidence === 0);
+    if (allFailed) {
+      modelDiagnostics.used_rule_fallback = true;
+      modelDiagnostics.failed_agents = llm.failedAgents;
+      modelDiagnostics.errors = llm.errors;
+      votes = ruleBasedVotes(metrics);
+    } else {
+      votes = llm.votes;
+      modelDiagnostics.failed_agents = llm.failedAgents;
+      modelDiagnostics.errors = llm.errors;
+    }
+  } else {
+    modelDiagnostics.used_rule_fallback = true;
+    modelDiagnostics.errors = ["No ANTHROPIC_API_KEY configured."];
+  }
 
   const consensus = buildConsensus(votes);
   let resolvedProfile = toInvestingProfile(profile);
@@ -157,9 +177,14 @@ export async function POST(req: Request) {
     weighted_consensus: weighted,
     conviction_change: conviction,
     profile: resolvedProfile,
-    degraded: !hasAnthropic(),
+    degraded: !hasAnthropic() || modelDiagnostics.used_rule_fallback,
     degraded_message: hasAnthropic()
-      ? undefined
+      ? modelDiagnostics.used_rule_fallback
+        ? "Model calls failed in this run. Showing deterministic rule-based fallback."
+        : modelDiagnostics.errors.length
+          ? `Some agents failed: ${modelDiagnostics.failed_agents.join(", ")}`
+          : undefined
       : "Anthropic API key not set — showing deterministic rule-based council for development.",
+    diagnostics: modelDiagnostics,
   });
 }

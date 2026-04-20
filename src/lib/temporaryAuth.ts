@@ -7,8 +7,13 @@ const GUEST_EMAIL = "guest@local.dev";
 const GUEST_PASSWORD_HASH = "temp-auth-disabled";
 
 export async function resolveUserId(): Promise<string> {
-  const session = await auth();
-  return session?.user?.id || GUEST_USER_ID;
+  try {
+    const session = await auth();
+    return session?.user?.id || GUEST_USER_ID;
+  } catch {
+    // If NextAuth env is misconfigured in deployment, stay in guest mode.
+    return GUEST_USER_ID;
+  }
 }
 
 export async function ensureTemporaryUser(userId: string): Promise<void> {

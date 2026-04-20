@@ -26,8 +26,16 @@ export async function GET() {
       .order("created_at", { ascending: false });
     if (error) throw error;
     return NextResponse.json({ positions: data ?? [] });
-  } catch {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Database unavailable";
+    return NextResponse.json(
+      {
+        error: "Database unavailable",
+        detail: message,
+        hint: "Check Supabase env vars and run migration 001_initial.sql.",
+      },
+      { status: 503 },
+    );
   }
 }
 
@@ -63,7 +71,15 @@ export async function POST(req: Request) {
       .single();
     if (error) throw error;
     return NextResponse.json({ position: data });
-  } catch {
-    return NextResponse.json({ error: "Could not save position" }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Could not save position";
+    return NextResponse.json(
+      {
+        error: "Could not save position",
+        detail: message,
+        hint: "Verify Supabase schema is applied and service role key is correct.",
+      },
+      { status: 500 },
+    );
   }
 }

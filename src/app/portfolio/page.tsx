@@ -33,6 +33,8 @@ export default function PortfolioPage() {
   const [entryPrice, setEntryPrice] = useState("");
   const [currentPrice, setCurrentPrice] = useState("");
   const [outcomeMsg, setOutcomeMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savingOutcome, setSavingOutcome] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/portfolio");
@@ -54,6 +56,7 @@ export default function PortfolioPage() {
   async function add(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
+    setSaving(true);
     const res = await fetch("/api/portfolio", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -66,16 +69,19 @@ export default function PortfolioPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      setMsg(data.error ?? "Failed");
+      setMsg(data.detail ? `${data.error}: ${data.detail}` : data.error ?? "Failed");
+      setSaving(false);
       return;
     }
     setMsg("Saved");
+    setSaving(false);
     load();
   }
 
   async function logOutcome(e: React.FormEvent) {
     e.preventDefault();
     setOutcomeMsg(null);
+    setSavingOutcome(true);
     const res = await fetch("/api/recommendation-outcomes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -89,24 +95,26 @@ export default function PortfolioPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      setOutcomeMsg(data.error ?? "Failed to log outcome");
+      setOutcomeMsg(data.detail ? `${data.error}: ${data.detail}` : data.error ?? "Failed to log outcome");
+      setSavingOutcome(false);
       return;
     }
     setOutcomeMsg(`Outcome saved (return ${data.return_pct}%)`);
+    setSavingOutcome(false);
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-8 p-8">
+    <div className="mx-auto max-w-4xl space-y-8 p-6 sm:p-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold text-white">Portfolio</h1>
-        <a href="/" className="text-sm text-zinc-500 hover:text-zinc-300">
+        <h1 className="text-2xl font-semibold text-white">Portfolio Tracker</h1>
+        <a href="/" className="cursor-pointer text-sm text-zinc-400 hover:text-zinc-200">
           ← Council
         </a>
       </header>
 
-      <form onSubmit={add} className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+      <form onSubmit={add} className="flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
         <p className="text-xs text-zinc-500">Manual positions (MVP)</p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <input
             className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-sm uppercase text-white"
             value={ticker}
@@ -134,16 +142,17 @@ export default function PortfolioPage() {
         </div>
         <button
           type="submit"
-          className="rounded-lg bg-emerald-600 py-2 text-sm text-white hover:bg-emerald-500"
+          disabled={saving}
+          className="min-h-11 cursor-pointer rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Add position
+          {saving ? "Saving..." : "Add position"}
         </button>
-        {msg && <p className="text-xs text-zinc-400">{msg}</p>}
+        {msg && <p className="text-xs text-zinc-300">{msg}</p>}
       </form>
 
       <form
         onSubmit={logOutcome}
-        className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4"
+        className="flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4"
       >
         <p className="text-xs text-zinc-500">Track recommendation outcome</p>
         <select
@@ -158,7 +167,7 @@ export default function PortfolioPage() {
             </option>
           ))}
         </select>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <select
             className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-white"
             value={action}
@@ -185,18 +194,19 @@ export default function PortfolioPage() {
         </div>
         <button
           type="submit"
-          className="rounded-lg bg-zinc-800 py-2 text-sm text-white hover:bg-zinc-700"
+          disabled={savingOutcome}
+          className="min-h-11 cursor-pointer rounded-lg bg-zinc-800 py-2 text-sm font-semibold text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Log outcome
+          {savingOutcome ? "Saving..." : "Log outcome"}
         </button>
-        {outcomeMsg && <p className="text-xs text-zinc-400">{outcomeMsg}</p>}
+        {outcomeMsg && <p className="text-xs text-zinc-300">{outcomeMsg}</p>}
       </form>
 
-      <ul className="space-y-2">
+      <ul className="grid gap-2 sm:grid-cols-2">
         {positions.map((p) => (
           <li
             key={p.id}
-            className="rounded-lg border border-zinc-800 px-4 py-3 font-mono text-sm text-zinc-300"
+            className="rounded-xl border border-zinc-800 px-4 py-3 font-mono text-sm text-zinc-200"
           >
             {p.ticker} — {p.shares} sh @ $${p.cost_basis} — entry {p.entry_date}
           </li>

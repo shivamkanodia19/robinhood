@@ -59,7 +59,6 @@ export function Dashboard() {
   const [openAgent, setOpenAgent] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!session) return;
     (async () => {
       const res = await fetch("/api/profile");
       const data = await res.json();
@@ -67,7 +66,7 @@ export function Dashboard() {
         setProfile(data.investing_profile as InvestingProfile);
       }
     })();
-  }, [session]);
+  }, []);
 
   const run = useCallback(async () => {
     setLoading(true);
@@ -81,7 +80,7 @@ export function Dashboard() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Analysis failed");
+        setError(data.detail ? `${data.error}: ${data.detail}` : data.error ?? "Analysis failed");
         return;
       }
       setConsensus(data.consensus);
@@ -105,11 +104,11 @@ export function Dashboard() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-8">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Investment Council</h1>
-          <p className="text-sm text-zinc-500">
+          <h1 className="text-2xl font-semibold text-white sm:text-3xl">AI Investment Council</h1>
+          <p className="text-sm text-zinc-400">
             {session?.user?.email
               ? `Signed in as ${session.user.email}`
               : "Temporary guest mode (auth disabled)"}
@@ -118,7 +117,7 @@ export function Dashboard() {
         <div className="flex gap-2">
           <a
             href="/portfolio"
-            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-900"
+            className="cursor-pointer rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-900"
           >
             Portfolio
           </a>
@@ -126,7 +125,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => signOut({ callbackUrl: "/" })}
-              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-900"
+              className="cursor-pointer rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-900"
             >
               Sign out
             </button>
@@ -134,7 +133,7 @@ export function Dashboard() {
         </div>
       </header>
 
-      <section className="flex flex-wrap items-end gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+      <section className="grid gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:grid-cols-2 lg:grid-cols-4">
         <label className="flex flex-col gap-1 text-xs text-zinc-500">
           Ticker
           <input
@@ -171,14 +170,16 @@ export function Dashboard() {
             <option value="analyst">Analyst — full detail</option>
           </select>
         </label>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={run}
-          className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-        >
-          {loading ? "Analyzing…" : "Run council"}
-        </button>
+        <div className="flex items-end">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={run}
+            className="min-h-11 w-full cursor-pointer rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Analyzing…" : "Run council"}
+          </button>
+        </div>
       </section>
 
       {degraded && (
@@ -195,7 +196,7 @@ export function Dashboard() {
 
       {consensus && (
         <>
-          <section className="rounded-xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 shadow-xl">
+          <section className="rounded-2xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 shadow-xl">
             <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
               Synthesis (not financial advice)
             </p>
@@ -237,7 +238,7 @@ export function Dashboard() {
             {mode === "decision" && (
               <button
                 type="button"
-                className="mt-4 text-xs font-medium text-emerald-400 hover:underline"
+                className="mt-4 cursor-pointer text-xs font-medium text-emerald-400 hover:underline"
                 onClick={() => setExpanded(!expanded)}
               >
                 {expanded ? "Hide detail" : "Expand analysis"} ▼
@@ -270,11 +271,11 @@ export function Dashboard() {
                   return (
                     <div
                       key={a.agent}
-                      className="rounded-lg border border-zinc-800 bg-zinc-900/30"
+                      className="rounded-xl border border-zinc-800 bg-zinc-900/30"
                     >
                       <button
                         type="button"
-                        className="flex w-full items-center justify-between px-4 py-3 text-left"
+                        className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left"
                         onClick={() =>
                           setOpenAgent(open ? null : a.agent)
                         }

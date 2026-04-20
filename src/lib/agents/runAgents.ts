@@ -53,18 +53,35 @@ export async function runAllAgents(
   model: string,
   metrics: StockMetricsPayload,
 ): Promise<AgentVote[]> {
+  const { votes } = await runAllAgentsWithDiagnostics(apiKey, model, metrics);
+  return votes;
+}
+
+export async function runAllAgentsWithDiagnostics(
+  apiKey: string,
+  model: string,
+  metrics: StockMetricsPayload,
+): Promise<{ votes: AgentVote[]; failedAgents: string[]; errors: string[] }> {
   const client = new Anthropic({ apiKey });
+  const errors: string[] = [];
+  const failedAgents: string[] = [];
   const results = await Promise.all(
     KINDS.map((k) =>
-      runAgent(client, model, k, metrics).catch(() => ({
-        agent: k,
-        recommendation: "HOLD" as const,
-        confidence: 0,
-        thesis: "Agent unavailable for this run.",
-        key_metric: "n/a",
-        key_risk: "Model timeout or parse error — excluded from conviction.",
-      })),
+      runAgent(client, model, k, metrics).catch((err: unknown) => {
+        failedAgents.push(k);
+        const message =
+          err instanceof Error ? err.message : "Unknown model/parsing error";
+        errors.push(`${k}: ${message}`);
+        return {
+          agent: k,
+          recommendation: "HOLD" as const,
+          confidence: 0,
+          thesis: "Agent unavailable for this run.",
+          key_metric: "n/a",
+          key_risk: "Model timeout or parse error — excluded from conviction.",
+        };
+      }),
     ),
   );
-  return results;
+  return { votes: results, failedAgents, errors };
 }
