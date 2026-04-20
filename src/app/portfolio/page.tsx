@@ -98,6 +98,22 @@ export default function PortfolioPage() {
     void refreshQuotes();
   }, [refreshQuotes]);
 
+  const portfolioTotals = useMemo(() => {
+    let cost = 0;
+    let mkt = 0;
+    for (const p of positions) {
+      const sh = parseFloat(p.shares) || 0;
+      const cb = parseFloat(p.cost_basis) || 0;
+      const q = quotes[p.ticker.toUpperCase()];
+      const px = q?.price ?? cb;
+      cost += sh * cb;
+      mkt += sh * px;
+    }
+    const pnl = mkt - cost;
+    const pnlPct = cost !== 0 ? (pnl / cost) * 100 : 0;
+    return { cost, mkt, pnl, pnlPct };
+  }, [positions, quotes]);
+
   if (status === "loading") {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-[var(--rh-ink-soft)]">
@@ -155,22 +171,6 @@ export default function PortfolioPage() {
     setOutcomeMsg(`Outcome saved (return ${data.return_pct}%)`);
     setSavingOutcome(false);
   }
-
-  const portfolioTotals = useMemo(() => {
-    let cost = 0;
-    let mkt = 0;
-    for (const p of positions) {
-      const sh = parseFloat(p.shares) || 0;
-      const cb = parseFloat(p.cost_basis) || 0;
-      const q = quotes[p.ticker.toUpperCase()];
-      const px = q?.price ?? cb;
-      cost += sh * cb;
-      mkt += sh * px;
-    }
-    const pnl = mkt - cost;
-    const pnlPct = cost !== 0 ? (pnl / cost) * 100 : 0;
-    return { cost, mkt, pnl, pnlPct };
-  }, [positions, quotes]);
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-8 px-4 py-8 sm:px-6">
