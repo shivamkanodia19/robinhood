@@ -51,10 +51,12 @@ export async function POST(req: Request) {
     );
   }
 
-  const requestedModel = process.env.ANTHROPIC_MODEL ?? "claude-3-5-haiku-latest";
+  const requestedModel = process.env.ANTHROPIC_MODEL ?? "claude-4-5-haiku-latest";
   const modelCandidates = Array.from(
     new Set([
       requestedModel,
+      "claude-4-5-haiku-latest",
+      "claude-4-5-haiku-20250929",
       "claude-3-5-haiku-latest",
       "claude-3-5-haiku-20241022",
     ]),
