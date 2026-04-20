@@ -91,12 +91,15 @@ export function buildWeightedConsensus(
   profile: InvestingProfile,
 ): WeightedConsensus {
   const weights = getWeights(profile);
+  const active = votes.filter((v) => !v.failed);
+  const weightSum = active.reduce((s, v) => s + weights[v.agent], 0) || 1;
+
   let score = 0;
   let confidenceAccumulator = 0;
   let weightedSupportCount = 0;
 
-  for (const vote of votes) {
-    const w = weights[vote.agent];
+  for (const vote of active) {
+    const w = weights[vote.agent] / weightSum;
     score += REC_SCORE[vote.recommendation] * w;
     confidenceAccumulator += vote.confidence * w;
     if (vote.recommendation !== "SELL") weightedSupportCount += w;
@@ -113,7 +116,9 @@ export function buildWeightedConsensus(
     weighted_support_count: Number(weightedSupportCount.toFixed(3)),
     weights_used: weights,
     contrarian_footnote:
-      "Contrarian perspective is always displayed even when profile weights deprioritize it.",
+      active.length < votes.length
+        ? `Weights renormalized over ${active.length} agents that returned a model vote.`
+        : "Contrarian perspective is always displayed even when profile weights deprioritize it.",
   };
 }
 

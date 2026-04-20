@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const agentSchema = z.object({
+export const agentSchema = z.object({
   recommendation: z.enum(["BUY", "HOLD", "SELL"]),
   confidence: z.number().int().min(0).max(100),
   thesis: z.string(),
@@ -9,6 +9,11 @@ const agentSchema = z.object({
 });
 
 export type ParsedAgent = z.infer<typeof agentSchema>;
+
+/** Validate tool_use / unknown JSON payloads from the Messages API */
+export function parseAgentFields(input: unknown): ParsedAgent {
+  return agentSchema.parse(input);
+}
 
 export function extractJsonObject(raw: string): unknown {
   const trimmed = raw.trim();

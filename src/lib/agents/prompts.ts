@@ -6,8 +6,17 @@ function fmt(n: number | null | undefined, suffix = "", digits = 2): string {
   return `${n.toFixed(digits)}${suffix}`;
 }
 
+function dataPreamble(m: StockMetricsPayload): string {
+  const note =
+    m.data_freshness_note ??
+    "Figures are from Yahoo Finance; prices can be delayed ~15 minutes depending on exchange.";
+  return `DATA SNAPSHOT for ${m.ticker}: assembled at ${m.as_of} (UTC). ${note}
+
+`;
+}
+
 const templates: Record<AgentKind, (m: StockMetricsPayload) => string> = {
-  value: (m) => `You are a value investor analyzing ${m.ticker} using fundamental analysis.
+  value: (m) => `${dataPreamble(m)}You are a value investor analyzing ${m.ticker} using fundamental analysis.
 
 Key principle: The market may misprice fundamentals. Find bargains where earnings power exceeds the market price.
 
@@ -22,7 +31,7 @@ Use ONLY these numeric facts (do not invent figures):
 Output strict JSON only with keys: recommendation (BUY|HOLD|SELL), confidence (0-100 integer), thesis (string, max 2 sentences), key_metric (string), key_risk (string).
 Base recommendation ONLY on the numbers above. Temperature 0 discipline: same numbers => same recommendation class.`,
 
-  momentum: (m) => `You are a momentum trader analyzing ${m.ticker}.
+  momentum: (m) => `${dataPreamble(m)}You are a momentum trader analyzing ${m.ticker}.
 
 Core belief: Trends persist over 3–12 months when price and flows align.
 
@@ -36,7 +45,7 @@ Use ONLY these facts:
 Output strict JSON only: recommendation (BUY|HOLD|SELL), confidence (0-100), thesis (<=2 sentences), key_metric, key_risk.
 If momentum_12m is strongly positive and price > MA200, lean BUY unless extended; if strongly negative and below MA200, lean SELL.`,
 
-  quality: (m) => `You are a quality investor analyzing ${m.ticker}.
+  quality: (m) => `${dataPreamble(m)}You are a quality investor analyzing ${m.ticker}.
 
 Core belief: Quality compounds via moat, ROE, and predictable earnings.
 
@@ -49,7 +58,7 @@ Facts:
 Output strict JSON: recommendation, confidence, thesis, key_metric, key_risk.
 High ROE + low leverage + stable earnings => BUY bias; deteriorating margins => caution.`,
 
-  contrarian: (m) => `You are a contrarian / mean-reversion investor analyzing ${m.ticker}.
+  contrarian: (m) => `${dataPreamble(m)}You are a contrarian / mean-reversion investor analyzing ${m.ticker}.
 
 Facts:
 - P/E vs modeled long-run anchor (trailing vs ~0.92×trailing proxy): ratio ${fmt(m.pe_vs_5y_avg_ratio)}
@@ -61,7 +70,7 @@ Facts:
 Output strict JSON: recommendation, confidence, thesis, key_metric, key_risk.
 Avoid BUY if fundamentals look like a value trap (use margins and leverage context from other fields implicitly via numbers only).`,
 
-  macro: (m) => `You are a macro / duration investor analyzing ${m.ticker}.
+  macro: (m) => `${dataPreamble(m)}You are a macro / duration investor analyzing ${m.ticker}.
 
 Facts:
 - 10-Year Treasury yield (%): ${fmt(m.treasury_10y_pct)}
@@ -72,7 +81,7 @@ Facts:
 Output strict JSON: recommendation, confidence, thesis, key_metric, key_risk.
 Rising rates hurt high-beta, long-duration cash flows; defensives with yield spread attractive do better.`,
 
-  lowvol: (m) => `You are a defensive / low-volatility investor analyzing ${m.ticker}.
+  lowvol: (m) => `${dataPreamble(m)}You are a defensive / low-volatility investor analyzing ${m.ticker}.
 
 Facts:
 - Beta: ${fmt(m.beta)}

@@ -7,6 +7,8 @@ export interface AgentVote {
   thesis: string;
   key_metric: string;
   key_risk: string;
+  /** Model or parse failure — excluded from vote tallies and confidence averages */
+  failed?: boolean;
 }
 
 export interface ConsensusResult {
@@ -25,8 +27,11 @@ function avg(nums: number[]): number {
 }
 
 export function buildConsensus(votes: AgentVote[]): ConsensusResult {
+  const active = votes.filter((v) => !v.failed);
+  const failedCount = votes.length - active.length;
+
   const counts = { BUY: 0, HOLD: 0, SELL: 0 };
-  for (const v of votes) {
+  for (const v of active) {
     counts[v.recommendation]++;
   }
 
@@ -36,33 +41,37 @@ export function buildConsensus(votes: AgentVote[]): ConsensusResult {
   );
 
   const final_recommendation: ConsensusResult["final_recommendation"] =
-    leaders.length !== 1 ? "MIXED" : leaders[0];
+    active.length === 0
+      ? "MIXED"
+      : leaders.length !== 1
+        ? "MIXED"
+        : leaders[0];
 
   const dominant =
     final_recommendation === "MIXED" ? null : final_recommendation;
 
   const aligned = dominant
-    ? votes.filter((v) => v.recommendation === dominant)
-    : votes;
+    ? active.filter((v) => v.recommendation === dominant)
+    : active;
   const agreementCount = dominant ? aligned.length : 0;
 
   let agreementBonus = 0;
-  const n = votes.length;
+  const n = active.length;
   if (n >= 6 && dominant) {
     if (agreementCount === 6) agreementBonus = 15;
     else if (agreementCount === 5) agreementBonus = 8;
     else if (agreementCount === 4) agreementBonus = 3;
   }
 
-  const baseConf = avg(votes.map((v) => v.confidence));
+  const baseConf = avg(active.map((v) => v.confidence));
   const consensus_confidence = Math.min(
     100,
     Math.round(baseConf + agreementBonus),
   );
 
   const dissenters = dominant
-    ? votes.filter((v) => v.recommendation !== dominant)
-    : votes;
+    ? active.filter((v) => v.recommendation !== dominant)
+    : active;
   const key_disagreement =
     final_recommendation === "MIXED"
       ? `No single majority: BUY ${counts.BUY}, HOLD ${counts.HOLD}, SELL ${counts.SELL}.`
@@ -72,10 +81,16 @@ export function buildConsensus(votes: AgentVote[]): ConsensusResult {
             .map((d) => `${d.agent} → ${d.recommendation} (${d.key_metric})`)
             .join("; ")}`;
 
+  const avail = `${active.length}/${votes.length}`;
+  const failNote =
+    failedCount > 0 ? ` (${failedCount} agent${failedCount > 1 ? "s" : ""} unavailable)` : "";
+
   const final_thesis =
-    final_recommendation === "MIXED"
-      ? `Mixed signals: BUY ${counts.BUY}, HOLD ${counts.HOLD}, SELL ${counts.SELL} — review thesis before sizing.`
-      : `Council leans ${final_recommendation} with ${agreementCount}/${votes.length} agents aligned; average confidence ${Math.round(baseConf)}.`;
+    active.length === 0
+      ? "No agent responses available for this run — try again shortly."
+      : final_recommendation === "MIXED"
+        ? `Mixed signals (${avail} responding${failNote}): BUY ${counts.BUY}, HOLD ${counts.HOLD}, SELL ${counts.SELL} — review thesis before sizing.`
+        : `Council leans ${final_recommendation} with ${agreementCount}/${active.length} responding agents aligned; average confidence ${Math.round(baseConf)}${failNote}.`;
 
   const next_checkpoint =
     "Review if Treasury yields, earnings revisions, or price vs 200-day MA shift materially.";

@@ -1,7 +1,8 @@
 import type { StockMetricsPayload } from "./types";
 
 const memory = new Map<string, { at: number; data: StockMetricsPayload }>();
-const TTL_MS = 24 * 60 * 60 * 1000;
+/** Short TTL so repeated "Run council" pulls fresher Yahoo data; explicit skipCache bypasses entirely */
+const TTL_MS = 5 * 60 * 1000;
 
 export function getCachedMetrics(ticker: string): StockMetricsPayload | null {
   const k = ticker.toUpperCase();

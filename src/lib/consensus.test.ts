@@ -37,6 +37,20 @@ describe("buildConsensus", () => {
     expect(c.final_recommendation).toBe("MIXED");
   });
 
+  it("excludes failed agents from alignment and vote counts", () => {
+    const votes: AgentVote[] = [
+      { agent: "value", ...base("BUY"), failed: true },
+      { agent: "momentum", ...base("BUY"), failed: true },
+      { agent: "quality", ...base("HOLD") },
+      { agent: "contrarian", ...base("HOLD") },
+      { agent: "macro", ...base("HOLD") },
+      { agent: "lowvol", ...base("HOLD") },
+    ];
+    const c = buildConsensus(votes);
+    expect(c.vote_breakdown).toEqual({ buy: 0, hold: 4, sell: 0 });
+    expect(c.final_thesis).toContain("4/4");
+  });
+
   it("handles 100 concurrent aggregations", () => {
     const votes: AgentVote[] = [
       { agent: "value", ...base("BUY") },

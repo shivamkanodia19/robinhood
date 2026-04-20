@@ -235,10 +235,12 @@ export async function computeStockMetrics(
   const sector_roe_median_proxy = 12;
   const sector_short_median_proxy = 3;
 
-  const payload: StockMetricsPayload = {
+  let payload: StockMetricsPayload = {
     ticker,
     currency: (profile?.currency as string | undefined) ?? "USD",
     as_of: new Date().toISOString(),
+    data_freshness_note:
+      "Yahoo Finance: fundamentals and chart history may lag real time; US equities often delayed ~15 minutes.",
     price: last ?? price,
     market_cap: marketCap,
     enterprise_value: enterpriseValue,
@@ -285,6 +287,34 @@ export async function computeStockMetrics(
     earnings_consensus_std_pct: null,
     data_warnings: warnings,
   };
+
+  try {
+    const quote = await yahooFinance.quote(ticker);
+    const live =
+      num(quote.postMarketPrice) ??
+      num(quote.regularMarketPrice) ??
+      num(quote.preMarketPrice) ??
+      payload.price;
+    if (live !== null) {
+      payload = { ...payload, price: live };
+    }
+    const rt = quote.regularMarketTime as unknown;
+    if (typeof rt === "number" && rt > 1e12) {
+      payload = { ...payload, as_of: new Date(rt).toISOString() };
+    } else if (typeof rt === "number" && rt < 1e12) {
+      payload = { ...payload, as_of: new Date(rt * 1000).toISOString() };
+    } else if (rt instanceof Date) {
+      payload = { ...payload, as_of: rt.toISOString() };
+    }
+  } catch {
+    payload = {
+      ...payload,
+      data_warnings: [
+        ...payload.data_warnings,
+        "quote: live quote refresh failed; using chart close / summary price.",
+      ],
+    };
+  }
 
   setCachedMetrics(ticker, payload);
   return payload;

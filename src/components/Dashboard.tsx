@@ -19,6 +19,7 @@ type Consensus = {
     thesis: string;
     key_metric: string;
     key_risk: string;
+    failed?: boolean;
   }>;
 };
 
@@ -55,6 +56,10 @@ export function Dashboard() {
   const [conviction, setConviction] = useState<ConvictionChange | null>(null);
   const [profile, setProfile] = useState<InvestingProfile>("balanced");
   const [degraded, setDegraded] = useState<string | undefined>();
+  const [dataSnapshot, setDataSnapshot] = useState<{
+    as_of?: string;
+    data_freshness_note?: string;
+  } | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [openAgent, setOpenAgent] = useState<string | null>(null);
 
@@ -72,6 +77,7 @@ export function Dashboard() {
     setLoading(true);
     setError(null);
     setConsensus(null);
+    setDataSnapshot(null);
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
@@ -82,6 +88,13 @@ export function Dashboard() {
       if (!res.ok) {
         setError(data.detail ? `${data.error}: ${data.detail}` : data.error ?? "Analysis failed");
         return;
+      }
+      if (data.metrics && typeof data.metrics === "object") {
+        const m = data.metrics as { as_of?: string; data_freshness_note?: string };
+        setDataSnapshot({
+          as_of: m.as_of,
+          data_freshness_note: m.data_freshness_note,
+        });
       }
       setConsensus(data.consensus);
       setWeighted(data.weighted_consensus ?? null);
@@ -200,6 +213,17 @@ export function Dashboard() {
             <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
               Synthesis (not financial advice)
             </p>
+            {dataSnapshot?.as_of && (
+              <p className="mt-1 text-xs text-zinc-500">
+                Data snapshot:{" "}
+                <span className="font-mono text-zinc-400">
+                  {new Date(dataSnapshot.as_of).toLocaleString()}
+                </span>
+                {dataSnapshot.data_freshness_note ? (
+                  <span className="block text-zinc-600">{dataSnapshot.data_freshness_note}</span>
+                ) : null}
+              </p>
+            )}
             <div className="mt-3 flex flex-wrap items-baseline gap-3">
               <span
                 className={`text-3xl font-bold ${recColor[consensus.final_recommendation] ?? "text-white"}`}
@@ -282,6 +306,11 @@ export function Dashboard() {
                       >
                         <span className="font-medium capitalize text-zinc-200">
                           {a.agent}
+                          {a.failed ? (
+                            <span className="ml-2 font-normal normal-case text-rose-400/90">
+                              (model unavailable)
+                            </span>
+                          ) : null}
                         </span>
                         <span
                           className={`text-sm font-semibold ${recColor[a.recommendation]}`}

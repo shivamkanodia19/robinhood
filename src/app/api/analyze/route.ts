@@ -42,7 +42,8 @@ export async function POST(req: Request) {
 
   let metrics;
   try {
-    metrics = await computeStockMetrics(ticker, { skipCache: skipCache ?? false });
+    // Default: always pull fresh Yahoo data unless caller sets skipCache: false
+    metrics = await computeStockMetrics(ticker, { skipCache: skipCache !== false });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Market data unavailable";
     return NextResponse.json(

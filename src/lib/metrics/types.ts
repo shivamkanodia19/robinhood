@@ -9,7 +9,10 @@ export type AgentKind =
 export interface StockMetricsPayload {
   ticker: string;
   currency: string | null;
+  /** ISO timestamp for when underlying Yahoo data was assembled (quote row may refresh this) */
   as_of: string;
+  /** Human-readable note on data freshness (Yahoo delayed quotes, etc.) */
+  data_freshness_note?: string;
   price: number | null;
   market_cap: number | null;
   enterprise_value: number | null;
