@@ -47,21 +47,10 @@ export default function PortfolioPage() {
   }, []);
 
   useEffect(() => {
-    if (session) load();
-  }, [session, load]);
+    load();
+  }, [load]);
 
   if (status === "loading") return <p className="p-8 text-zinc-500">Loading…</p>;
-  if (!session) {
-    return (
-      <div className="p-8">
-        <a href="/login" className="text-emerald-400">
-          Sign in
-        </a>{" "}
-        to manage portfolio.
-      </div>
-    );
-  }
-
   async function add(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);

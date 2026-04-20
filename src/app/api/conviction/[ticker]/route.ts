@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { hasSupabase } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { computeConvictionChange, toInvestingProfile } from "@/lib/phase2";
+import { ensureTemporaryUser, resolveUserId } from "@/lib/temporaryAuth";
 
 export async function GET(
   _req: Request,
   context: { params: Promise<{ ticker: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await resolveUserId();
+  await ensureTemporaryUser(userId);
   if (!hasSupabase()) {
     return NextResponse.json({
       ticker: "UNKNOWN",
@@ -29,14 +27,14 @@ export async function GET(
   const { data: profileRow } = await sb
     .from("users")
     .select("investing_profile")
-    .eq("id", session.user.id)
+    .eq("id", userId)
     .maybeSingle();
   const profile = toInvestingProfile(profileRow?.investing_profile);
 
   const { data: rows, error } = await sb
     .from("stock_analyses")
     .select("id,analysis_date,final_recommendation,consensus_confidence,stock_data")
-    .eq("user_id", session.user.id)
+    .eq("user_id", userId)
     .eq("ticker", ticker.toUpperCase())
     .order("analysis_date", { ascending: false })
     .limit(2);

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { hasSupabase } from "@/lib/env";
 import { z } from "zod";
+import { ensureTemporaryUser, resolveUserId } from "@/lib/temporaryAuth";
 
 const positionSchema = z.object({
   ticker: z.string().min(1).max(16),
@@ -12,10 +12,8 @@ const positionSchema = z.object({
 });
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await resolveUserId();
+  await ensureTemporaryUser(userId);
   if (!hasSupabase()) {
     return NextResponse.json({ positions: [] });
   }
@@ -24,7 +22,7 @@ export async function GET() {
     const { data, error } = await sb
       .from("portfolio_positions")
       .select("*")
-      .eq("user_id", session.user.id)
+      .eq("user_id", userId)
       .order("created_at", { ascending: false });
     if (error) throw error;
     return NextResponse.json({ positions: data ?? [] });
@@ -34,10 +32,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await resolveUserId();
+  await ensureTemporaryUser(userId);
   if (!hasSupabase()) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
@@ -57,7 +53,7 @@ export async function POST(req: Request) {
     const { data, error } = await sb
       .from("portfolio_positions")
       .insert({
-        user_id: session.user.id,
+        user_id: userId,
         ticker: p.ticker.toUpperCase(),
         shares: p.shares,
         cost_basis: p.cost_basis,

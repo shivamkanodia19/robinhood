@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { computeStockMetrics } from "@/lib/metrics/calculator";
 import { buildConsensus } from "@/lib/consensus";
 import { runAllAgents } from "@/lib/agents/runAgents";
@@ -12,6 +11,7 @@ import {
   toInvestingProfile,
 } from "@/lib/phase2";
 import { z } from "zod";
+import { ensureTemporaryUser, resolveUserId } from "@/lib/temporaryAuth";
 
 const bodySchema = z.object({
   ticker: z.string().min(1).max(16),
@@ -23,10 +23,8 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await resolveUserId();
+  await ensureTemporaryUser(userId);
 
   let json: unknown;
   try {
@@ -75,7 +73,7 @@ export async function POST(req: Request) {
       const { data: userRow } = await sb
         .from("users")
         .select("investing_profile")
-        .eq("id", session.user.id)
+        .eq("id", userId)
         .maybeSingle();
       resolvedProfile = toInvestingProfile(
         profile ?? userRow?.investing_profile ?? "balanced",
@@ -84,7 +82,7 @@ export async function POST(req: Request) {
       const { data: previousAnalysis } = await sb
         .from("stock_analyses")
         .select("stock_data")
-        .eq("user_id", session.user.id)
+        .eq("user_id", userId)
         .eq("ticker", metrics.ticker)
         .order("analysis_date", { ascending: false })
         .limit(1)
@@ -99,7 +97,7 @@ export async function POST(req: Request) {
         await sb
           .from("users")
           .update({ investing_profile: profile })
-          .eq("id", session.user.id);
+          .eq("id", userId);
       }
     } catch {
       resolvedProfile = toInvestingProfile(profile);
@@ -118,7 +116,7 @@ export async function POST(req: Request) {
       const { data: row, error } = await sb
         .from("stock_analyses")
         .insert({
-          user_id: session.user.id,
+          user_id: userId,
           ticker: metrics.ticker,
           final_recommendation: consensus.final_recommendation,
           consensus_confidence: consensus.consensus_confidence,

@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { hasSupabase } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import YahooFinance from "yahoo-finance2";
+import { ensureTemporaryUser, resolveUserId } from "@/lib/temporaryAuth";
 
 const yahooFinance = new YahooFinance();
 
 export async function POST() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await resolveUserId();
+  await ensureTemporaryUser(userId);
   if (!hasSupabase()) {
     return NextResponse.json({ reasons: [], queued: [] });
   }
@@ -19,7 +17,7 @@ export async function POST() {
   const { data: rows, error } = await sb
     .from("stock_analyses")
     .select("id,ticker,analysis_date,stock_data")
-    .eq("user_id", session.user.id)
+    .eq("user_id", userId)
     .order("analysis_date", { ascending: false })
     .limit(100);
 

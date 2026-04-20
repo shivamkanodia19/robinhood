@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { hasSupabase } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { toInvestingProfile } from "@/lib/phase2";
 import { z } from "zod";
+import { ensureTemporaryUser, resolveUserId } from "@/lib/temporaryAuth";
 
 const schema = z.object({
   investing_profile: z.enum(["value", "growth", "momentum", "income", "balanced"]),
 });
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await resolveUserId();
+  await ensureTemporaryUser(userId);
   if (!hasSupabase()) {
     return NextResponse.json({ investing_profile: "balanced" });
   }
@@ -21,7 +19,7 @@ export async function GET() {
   const { data } = await sb
     .from("users")
     .select("investing_profile")
-    .eq("id", session.user.id)
+    .eq("id", userId)
     .maybeSingle();
   return NextResponse.json({
     investing_profile: toInvestingProfile(data?.investing_profile),
@@ -29,10 +27,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await resolveUserId();
+  await ensureTemporaryUser(userId);
   if (!hasSupabase()) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
@@ -50,7 +46,7 @@ export async function POST(req: Request) {
   const { error } = await sb
     .from("users")
     .update({ investing_profile: parsed.data.investing_profile })
-    .eq("id", session.user.id);
+    .eq("id", userId);
   if (error) {
     return NextResponse.json({ error: "Could not update profile" }, { status: 500 });
   }

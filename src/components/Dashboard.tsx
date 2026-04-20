@@ -104,41 +104,15 @@ export function Dashboard() {
     );
   }
 
-  if (!session) {
-    return (
-      <div className="mx-auto flex max-w-lg flex-col gap-6 p-8">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">
-            AI Investment Council
-          </h1>
-          <p className="mt-2 text-sm text-zinc-400">
-            Sign in to run the six-agent council on any ticker. Analysis is for
-            education, not financial advice.
-          </p>
-        </div>
-        <a
-          href="/login"
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-center text-sm font-medium text-white hover:bg-emerald-500"
-        >
-          Sign in
-        </a>
-        <a
-          href="/register"
-          className="text-center text-sm text-emerald-400 hover:underline"
-        >
-          Create account
-        </a>
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-white">Investment Council</h1>
           <p className="text-sm text-zinc-500">
-            Signed in as {session.user.email}
+            {session?.user?.email
+              ? `Signed in as ${session.user.email}`
+              : "Temporary guest mode (auth disabled)"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -148,13 +122,15 @@ export function Dashboard() {
           >
             Portfolio
           </a>
-          <button
-            type="button"
-            onClick={() => signOut({ callbackUrl: "/" })}
-            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-900"
-          >
-            Sign out
-          </button>
+          {session?.user?.email && (
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-900"
+            >
+              Sign out
+            </button>
+          )}
         </div>
       </header>
 

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { hasSupabase } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
+import { ensureTemporaryUser, resolveUserId } from "@/lib/temporaryAuth";
 
 const bodySchema = z.object({
   analysis_id: z.string().uuid(),
@@ -15,10 +15,8 @@ const bodySchema = z.object({
 });
 
 export async function GET(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await resolveUserId();
+  await ensureTemporaryUser(userId);
   if (!hasSupabase()) {
     return NextResponse.json({ outcomes: [] });
   }
@@ -28,7 +26,7 @@ export async function GET(req: Request) {
   const query = sb
     .from("recommendation_outcomes")
     .select("*, stock_analyses!inner(user_id)")
-    .eq("stock_analyses.user_id", session.user.id)
+    .eq("stock_analyses.user_id", userId)
     .order("action_date", { ascending: false });
   const { data, error } = analysisId
     ? await query.eq("analysis_id", analysisId)
@@ -40,10 +38,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await resolveUserId();
+  await ensureTemporaryUser(userId);
   if (!hasSupabase()) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
@@ -66,7 +62,7 @@ export async function POST(req: Request) {
     .from("stock_analyses")
     .select("id,user_id")
     .eq("id", p.analysis_id)
-    .eq("user_id", session.user.id)
+    .eq("user_id", userId)
     .maybeSingle();
   if (analysisError || !analysisRow) {
     return NextResponse.json({ error: "Analysis not found" }, { status: 404 });

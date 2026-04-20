@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { hasSupabase } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { ensureTemporaryUser, resolveUserId } from "@/lib/temporaryAuth";
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await resolveUserId();
+  await ensureTemporaryUser(userId);
   if (!hasSupabase()) {
     return NextResponse.json({ analyses: [] });
   }
@@ -15,7 +13,7 @@ export async function GET() {
   const { data, error } = await sb
     .from("stock_analyses")
     .select("id,ticker,analysis_date,final_recommendation,consensus_confidence")
-    .eq("user_id", session.user.id)
+    .eq("user_id", userId)
     .order("analysis_date", { ascending: false })
     .limit(25);
   if (error) {
