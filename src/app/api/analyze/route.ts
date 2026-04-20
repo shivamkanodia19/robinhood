@@ -51,12 +51,14 @@ export async function POST(req: Request) {
     );
   }
 
-  const requestedModel = process.env.ANTHROPIC_MODEL ?? "claude-4-5-haiku-latest";
+  // Haiku 4.5 IDs: https://platform.claude.com/docs/en/about-claude/models/overview
+  // (Do not use claude-4-5-haiku-* — those strings are not valid API model IDs.)
+  const requestedModel = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5";
   const modelCandidates = Array.from(
     new Set([
       requestedModel,
-      "claude-4-5-haiku-latest",
-      "claude-4-5-haiku-20250929",
+      "claude-haiku-4-5",
+      "claude-haiku-4-5-20251001",
       "claude-3-5-haiku-latest",
       "claude-3-5-haiku-20241022",
     ]),
@@ -76,40 +78,15 @@ export async function POST(req: Request) {
       modelDiagnostics.attempted_models.push(candidate);
       const llm = await runAllAgentsWithDiagnostics(apiKey, candidate, metrics);
       const allFailed = llm.votes.every((v) => v.confidence === 0);
-      const modelRejected = llm.errors.some((err) => {
-        const m = err.toLowerCase();
-        return (
-          m.includes("not_found_error") ||
-          m.includes("deprecated") ||
-          m.includes("end-of-life") ||
-          m.includes("invalid model") ||
-          m.includes("model")
-        );
-      });
+      modelDiagnostics.failed_agents = llm.failedAgents;
+      modelDiagnostics.errors = llm.errors;
 
       if (!allFailed) {
         votes = llm.votes;
         modelDiagnostics.selected_model = candidate;
-        modelDiagnostics.failed_agents = llm.failedAgents;
-        modelDiagnostics.errors = llm.errors;
         break;
       }
-
-      // If the model itself is invalid/deprecated, try the next candidate.
-      if (modelRejected) {
-        modelDiagnostics.failed_agents = llm.failedAgents;
-        modelDiagnostics.errors = llm.errors;
-        continue;
-      }
-
-      // Otherwise, assume temporary runtime failure and use deterministic fallback.
-      if (!modelRejected) {
-        modelDiagnostics.used_rule_fallback = true;
-        modelDiagnostics.selected_model = candidate;
-        modelDiagnostics.failed_agents = llm.failedAgents;
-        modelDiagnostics.errors = llm.errors;
-        break;
-      }
+      // Try next snapshot/alias until one works or the list is exhausted.
     }
 
     if (!modelDiagnostics.selected_model) {

@@ -4,7 +4,8 @@ const schema = z.object({
   NEXTAUTH_SECRET: z.string().min(8).default("dev-only-change-me"),
   NEXTAUTH_URL: z.string().url().optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  ANTHROPIC_MODEL: z.string().default("claude-4-5-haiku-latest"),
+  // Official alias per https://platform.claude.com/docs/en/about-claude/models/overview
+  ANTHROPIC_MODEL: z.string().default("claude-haiku-4-5"),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
 });
