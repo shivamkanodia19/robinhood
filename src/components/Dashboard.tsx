@@ -129,7 +129,7 @@ export function Dashboard() {
           <p className="mt-1 text-sm text-[var(--rh-ink-soft)]">
             {session?.user?.email
               ? `Signed in as ${session.user.email}`
-              : "Guest mode — add a second Anthropic key in env to raise rate limits"}
+              : "Guest mode — limits are per Anthropic org; a second key only helps if it is a different org/account"}
           </p>
         </div>
         <div className="flex gap-2">
