@@ -3,7 +3,7 @@ import { computeStockMetrics } from "@/lib/metrics/calculator";
 import { buildConsensus } from "@/lib/consensus";
 import { runAllAgentsWithDiagnostics } from "@/lib/agents/runAgents";
 import { ruleBasedVotes } from "@/lib/agents/ruleFallback";
-import { hasAnthropic, hasSupabase } from "@/lib/env";
+import { getAnthropicApiKeys, hasAnthropic, hasSupabase } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   buildWeightedConsensus,
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       "claude-3-5-haiku-20241022",
     ]),
   );
-  const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
+  const apiKeys = getAnthropicApiKeys();
 
   const modelDiagnostics = {
     used_rule_fallback: false,
@@ -72,12 +72,13 @@ export async function POST(req: Request) {
     selected_model: null as string | null,
     failed_agents: [] as string[],
     errors: [] as string[],
+    api_key_slots: apiKeys.length,
   };
   let votes = ruleBasedVotes(metrics);
   if (hasAnthropic()) {
     for (const candidate of modelCandidates) {
       modelDiagnostics.attempted_models.push(candidate);
-      const llm = await runAllAgentsWithDiagnostics(apiKey, candidate, metrics);
+      const llm = await runAllAgentsWithDiagnostics(apiKeys, candidate, metrics);
       const allFailed = llm.votes.every((v) => v.confidence === 0);
       modelDiagnostics.failed_agents = llm.failedAgents;
       modelDiagnostics.errors = llm.errors;

@@ -1,26 +1,50 @@
 @import "tailwindcss";
 
+/* Robinhood-inspired green + white base; retro = scanlines (RetroChrome) + hard shadows */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --rh-green: #00c805;
+  --rh-green-dark: #00a004;
+  --rh-green-glow: rgba(0, 200, 5, 0.35);
+  --rh-ink: #121212;
+  --rh-ink-soft: #5e5e5e;
+  --rh-surface: #ffffff;
+  --rh-surface-muted: #f4f6f5;
+  --rh-border: #e3e5e4;
+  --rh-negative: #ff4e42;
+  --rh-positive: var(--rh-green);
+  --retro-shadow: 4px 4px 0 #0b3d14;
+  --retro-shadow-sm: 2px 2px 0 #0b3d14;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-background: var(--rh-surface-muted);
+  --color-foreground: var(--rh-ink);
+  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: linear-gradient(165deg, #ffffff 0%, #eef2f0 48%, #e8ece9 100%);
+  color: var(--rh-ink);
+  font-family: var(--font-sans);
+}
+
+/* Focus rings — RH green */
+:focus-visible {
+  outline: 2px solid var(--rh-green);
+  outline-offset: 2px;
+}
+
+@keyframes rh-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--rh-green-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+.animate-rh-pulse {
+  animation: rh-pulse 2.4s ease-in-out infinite;
 }

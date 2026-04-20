@@ -39,10 +39,10 @@ type ConvictionChange = {
 };
 
 const recColor: Record<string, string> = {
-  BUY: "text-emerald-400",
-  HOLD: "text-amber-300",
-  SELL: "text-rose-400",
-  MIXED: "text-violet-300",
+  BUY: "text-[var(--rh-green)]",
+  HOLD: "text-amber-700",
+  SELL: "text-[var(--rh-negative)]",
+  MIXED: "text-violet-800",
 };
 
 export function Dashboard() {
@@ -110,7 +110,7 @@ export function Dashboard() {
 
   if (status === "loading") {
     return (
-      <div className="flex flex-1 items-center justify-center p-8 text-zinc-400">
+      <div className="flex flex-1 items-center justify-center p-8 text-[var(--rh-ink-soft)]">
         Loading session…
       </div>
     );
@@ -118,19 +118,24 @@ export function Dashboard() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--rh-border)] pb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-white sm:text-3xl">AI Investment Council</h1>
-          <p className="text-sm text-zinc-400">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.25em] text-[var(--rh-green)]">
+            Retro terminal · v1
+          </p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-[var(--rh-ink)] sm:text-3xl">
+            AI Investment Council
+          </h1>
+          <p className="mt-1 text-sm text-[var(--rh-ink-soft)]">
             {session?.user?.email
               ? `Signed in as ${session.user.email}`
-              : "Temporary guest mode (auth disabled)"}
+              : "Guest mode — add a second Anthropic key in env to raise rate limits"}
           </p>
         </div>
         <div className="flex gap-2">
           <a
             href="/portfolio"
-            className="cursor-pointer rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-900"
+            className="rounded-lg border-2 border-[var(--rh-ink)] bg-[var(--rh-surface)] px-4 py-2 text-sm font-semibold text-[var(--rh-ink)] shadow-[var(--retro-shadow-sm)] transition hover:-translate-y-0.5"
           >
             Portfolio
           </a>
@@ -138,7 +143,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => signOut({ callbackUrl: "/" })}
-              className="cursor-pointer rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-900"
+              className="cursor-pointer rounded-lg border border-[var(--rh-border)] px-3 py-2 text-sm text-[var(--rh-ink-soft)] hover:bg-white"
             >
               Sign out
             </button>
@@ -146,20 +151,20 @@ export function Dashboard() {
         </div>
       </header>
 
-      <section className="grid gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="flex flex-col gap-1 text-xs text-zinc-500">
+      <section className="grid gap-3 rounded-2xl border-2 border-[var(--rh-border)] bg-[var(--rh-surface)] p-4 shadow-[var(--retro-shadow-sm)] sm:grid-cols-2 lg:grid-cols-4">
+        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-[var(--rh-ink-soft)]">
           Ticker
           <input
-            className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm uppercase text-white outline-none focus:border-emerald-600"
+            className="rounded-lg border border-[var(--rh-border)] bg-[var(--rh-surface-muted)] px-3 py-2 font-mono text-sm font-semibold uppercase text-[var(--rh-ink)] outline-none focus:border-[var(--rh-green)]"
             value={ticker}
             onChange={(e) => setTicker(e.target.value.toUpperCase())}
             maxLength={12}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-zinc-500">
+        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-[var(--rh-ink-soft)]">
           Investing profile
           <select
-            className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"
+            className="rounded-lg border border-[var(--rh-border)] bg-white px-3 py-2 text-sm text-[var(--rh-ink)]"
             value={profile}
             onChange={(e) => setProfile(e.target.value as InvestingProfile)}
           >
@@ -170,10 +175,10 @@ export function Dashboard() {
             <option value="income">Income</option>
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs text-zinc-500">
+        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-[var(--rh-ink-soft)]">
           View
           <select
-            className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"
+            className="rounded-lg border border-[var(--rh-border)] bg-white px-3 py-2 text-sm text-[var(--rh-ink)]"
             value={mode}
             onChange={(e) =>
               setMode(e.target.value as "decision" | "analyst")
@@ -188,7 +193,7 @@ export function Dashboard() {
             type="button"
             disabled={loading}
             onClick={run}
-            className="min-h-11 w-full cursor-pointer rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="animate-rh-pulse min-h-11 w-full cursor-pointer rounded-lg bg-[var(--rh-green)] px-5 py-2 text-sm font-bold text-white shadow-[var(--retro-shadow-sm)] hover:bg-[var(--rh-green-dark)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Analyzing…" : "Run council"}
           </button>
@@ -196,65 +201,65 @@ export function Dashboard() {
       </section>
 
       {degraded && (
-        <p className="rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+        <p className="rounded-xl border-2 border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
           {degraded}
         </p>
       )}
 
       {error && (
-        <p className="rounded-lg border border-rose-900/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
+        <p className="rounded-xl border-2 border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-900">
           {error}
         </p>
       )}
 
       {consensus && (
         <>
-          <section className="rounded-2xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 shadow-xl">
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <section className="rounded-2xl border-2 border-[var(--rh-border)] bg-[var(--rh-surface)] p-6 shadow-[var(--retro-shadow)]">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--rh-ink-soft)]">
               Synthesis (not financial advice)
             </p>
             {dataSnapshot?.as_of && (
-              <p className="mt-1 text-xs text-zinc-500">
+              <p className="mt-1 text-xs text-[var(--rh-ink-soft)]">
                 Data snapshot:{" "}
-                <span className="font-mono text-zinc-400">
+                <span className="font-mono text-[var(--rh-ink)]">
                   {new Date(dataSnapshot.as_of).toLocaleString()}
                 </span>
                 {dataSnapshot.data_freshness_note ? (
-                  <span className="block text-zinc-600">{dataSnapshot.data_freshness_note}</span>
+                  <span className="mt-1 block text-[var(--rh-ink-soft)]">{dataSnapshot.data_freshness_note}</span>
                 ) : null}
               </p>
             )}
             <div className="mt-3 flex flex-wrap items-baseline gap-3">
               <span
-                className={`text-3xl font-bold ${recColor[consensus.final_recommendation] ?? "text-white"}`}
+                className={`text-4xl font-black tracking-tight ${recColor[consensus.final_recommendation] ?? "text-[var(--rh-ink)]"}`}
               >
                 {consensus.final_recommendation}
               </span>
-              <span className="text-zinc-400">
+              <span className="text-[var(--rh-ink-soft)]">
                 Confidence {consensus.consensus_confidence}%
               </span>
-              <span className="text-zinc-500">
+              <span className="font-mono text-sm text-[var(--rh-ink-soft)]">
                 ({consensus.vote_breakdown.buy} buy ·{" "}
                 {consensus.vote_breakdown.hold} hold ·{" "}
                 {consensus.vote_breakdown.sell} sell)
               </span>
             </div>
-            <p className="mt-4 text-sm leading-relaxed text-zinc-300">
+            <p className="mt-4 text-sm leading-relaxed text-[var(--rh-ink)]">
               {consensus.final_thesis}
             </p>
-            <p className="mt-3 text-xs text-zinc-500">
+            <p className="mt-3 text-xs text-[var(--rh-ink-soft)]">
               Next checkpoint: {consensus.next_checkpoint}
             </p>
             {weighted && (
-              <p className="mt-2 text-xs text-zinc-500">
+              <p className="mt-2 text-xs text-[var(--rh-ink-soft)]">
                 Based on your <span className="capitalize">{weighted.profile}</span> profile, weighted signal is{" "}
-                <span className="font-semibold text-zinc-300">{weighted.final_recommendation}</span>{" "}
+                <span className="font-semibold text-[var(--rh-ink)]">{weighted.final_recommendation}</span>{" "}
                 ({weighted.consensus_confidence}% confidence).
               </p>
             )}
             {conviction && (
-              <p className="mt-2 text-xs text-zinc-500">
-                Conviction: <span className="font-semibold text-zinc-300">{conviction.direction}</span>{" "}
+              <p className="mt-2 text-xs text-[var(--rh-ink-soft)]">
+                Conviction: <span className="font-semibold text-[var(--rh-ink)]">{conviction.direction}</span>{" "}
                 ({conviction.delta_score >= 0 ? "+" : ""}
                 {conviction.delta_score.toFixed(3)}) — {conviction.reason}
               </p>
@@ -262,7 +267,7 @@ export function Dashboard() {
             {mode === "decision" && (
               <button
                 type="button"
-                className="mt-4 cursor-pointer text-xs font-medium text-emerald-400 hover:underline"
+                className="mt-4 cursor-pointer text-xs font-bold text-[var(--rh-green)] hover:underline"
                 onClick={() => setExpanded(!expanded)}
               >
                 {expanded ? "Hide detail" : "Expand analysis"} ▼
@@ -272,22 +277,22 @@ export function Dashboard() {
 
           {(mode === "analyst" || expanded) && (
             <>
-              <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-                <h2 className="text-sm font-semibold text-zinc-300">
+              <section className="rounded-xl border-2 border-[var(--rh-border)] bg-white/90 p-4 shadow-[var(--retro-shadow-sm)]">
+                <h2 className="text-sm font-bold text-[var(--rh-ink)]">
                   Dissent & friction
                 </h2>
-                <p className="mt-2 text-sm text-zinc-400">
+                <p className="mt-2 text-sm text-[var(--rh-ink-soft)]">
                   {consensus.key_disagreement}
                 </p>
                 {weighted && (
-                  <p className="mt-2 text-xs text-zinc-500">
+                  <p className="mt-2 text-xs text-[var(--rh-ink-soft)]">
                     {weighted.contrarian_footnote}
                   </p>
                 )}
               </section>
 
               <section className="space-y-2">
-                <h2 className="text-sm font-semibold text-zinc-400">
+                <h2 className="text-sm font-bold text-[var(--rh-ink)]">
                   Agent analyses
                 </h2>
                 {consensus.agents.map((a) => {
@@ -295,7 +300,7 @@ export function Dashboard() {
                   return (
                     <div
                       key={a.agent}
-                      className="rounded-xl border border-zinc-800 bg-zinc-900/30"
+                      className="rounded-xl border-2 border-[var(--rh-border)] bg-[var(--rh-surface)]"
                     >
                       <button
                         type="button"
@@ -304,32 +309,32 @@ export function Dashboard() {
                           setOpenAgent(open ? null : a.agent)
                         }
                       >
-                        <span className="font-medium capitalize text-zinc-200">
+                        <span className="font-semibold capitalize text-[var(--rh-ink)]">
                           {a.agent}
                           {a.failed ? (
-                            <span className="ml-2 font-normal normal-case text-rose-400/90">
+                            <span className="ml-2 font-normal normal-case text-[var(--rh-negative)]">
                               (model unavailable)
                             </span>
                           ) : null}
                         </span>
                         <span
-                          className={`text-sm font-semibold ${recColor[a.recommendation]}`}
+                          className={`font-mono text-sm font-bold ${recColor[a.recommendation]}`}
                         >
                           {a.recommendation}{" "}
-                          <span className="text-zinc-500">
+                          <span className="font-sans font-normal text-[var(--rh-ink-soft)]">
                             ({a.confidence}%)
                           </span>
                         </span>
                       </button>
                       {open && (
-                        <div className="space-y-2 border-t border-zinc-800 px-4 py-3 text-sm text-zinc-400">
+                        <div className="space-y-2 border-t-2 border-[var(--rh-border)] px-4 py-3 text-sm text-[var(--rh-ink-soft)]">
                           <p>{a.thesis}</p>
                           <p>
-                            <span className="text-zinc-500">Key metric:</span>{" "}
+                            <span className="text-[var(--rh-ink)]">Key metric:</span>{" "}
                             {a.key_metric}
                           </p>
                           <p>
-                            <span className="text-zinc-500">Risk:</span>{" "}
+                            <span className="text-[var(--rh-ink)]">Risk:</span>{" "}
                             {a.key_risk}
                           </p>
                         </div>
@@ -343,7 +348,7 @@ export function Dashboard() {
         </>
       )}
 
-      <footer className="border-t border-zinc-800 pt-6 text-center text-xs text-zinc-600">
+      <footer className="border-t border-[var(--rh-border)] pt-6 text-center text-xs text-[var(--rh-ink-soft)]">
         This tool is for informational purposes only and does not constitute
         financial, legal, or tax advice. Past performance does not guarantee
         future results. Consult a qualified professional before investing.

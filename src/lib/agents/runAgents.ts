@@ -123,29 +123,39 @@ const MAX_ATTEMPTS = 3;
 const BACKOFF_MS = 450;
 
 export async function runAllAgents(
-  apiKey: string,
+  apiKeys: string[],
   model: string,
   metrics: StockMetricsPayload,
 ): Promise<AgentVote[]> {
-  const { votes } = await runAllAgentsWithDiagnostics(apiKey, model, metrics);
+  const { votes } = await runAllAgentsWithDiagnostics(apiKeys, model, metrics);
   return votes;
 }
 
 export async function runAllAgentsWithDiagnostics(
-  apiKey: string,
+  apiKeys: string[],
   model: string,
   metrics: StockMetricsPayload,
 ): Promise<{ votes: AgentVote[]; failedAgents: string[]; errors: string[] }> {
-  const client = new Anthropic({ apiKey });
+  if (!apiKeys.length) {
+    return {
+      votes: KINDS.map((k) => failedVote(k, "No ANTHROPIC API keys configured.")),
+      failedAgents: [...KINDS],
+      errors: KINDS.map((k) => `${k}: missing API key`),
+    };
+  }
+
   const errors: string[] = [];
   const failedAgents: string[] = [];
   const votes: AgentVote[] = [];
 
-  for (const k of KINDS) {
+  for (let i = 0; i < KINDS.length; i++) {
+    const k = KINDS[i];
     let lastErr = "Unknown error";
     let vote: AgentVote | null = null;
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const key = apiKeys[(i + attempt) % apiKeys.length];
+      const client = new Anthropic({ apiKey: key });
       try {
         vote = await runAgent(client, model, k, metrics);
         break;

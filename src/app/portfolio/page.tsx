@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Position = {
   id: string;
@@ -19,9 +19,26 @@ type Analysis = {
   consensus_confidence: number;
 };
 
+type QuoteInfo = {
+  price: number | null;
+  regularMarketChangePercent: number | null;
+  currency: string | null;
+  as_of: string;
+};
+
+function formatMoney(n: number, currency = "USD") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
 export default function PortfolioPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const [positions, setPositions] = useState<Position[]>([]);
+  const [quotes, setQuotes] = useState<Record<string, QuoteInfo>>({});
   const [ticker, setTicker] = useState("NVDA");
   const [shares, setShares] = useState("10");
   const [cost, setCost] = useState("120");
@@ -35,6 +52,7 @@ export default function PortfolioPage() {
   const [outcomeMsg, setOutcomeMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savingOutcome, setSavingOutcome] = useState(false);
+  const [quotesLoading, setQuotesLoading] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/portfolio");
@@ -48,11 +66,46 @@ export default function PortfolioPage() {
     }
   }, []);
 
+  const tickers = useMemo(
+    () => positions.map((p) => p.ticker.toUpperCase()),
+    [positions],
+  );
+
+  const refreshQuotes = useCallback(async () => {
+    if (!tickers.length) {
+      setQuotes({});
+      return;
+    }
+    setQuotesLoading(true);
+    try {
+      const res = await fetch("/api/quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tickers }),
+      });
+      const data = await res.json();
+      if (res.ok && data.quotes) setQuotes(data.quotes);
+    } finally {
+      setQuotesLoading(false);
+    }
+  }, [tickers]);
+
   useEffect(() => {
     load();
   }, [load]);
 
-  if (status === "loading") return <p className="p-8 text-zinc-500">Loading…</p>;
+  useEffect(() => {
+    void refreshQuotes();
+  }, [refreshQuotes]);
+
+  if (status === "loading") {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8 text-[var(--rh-ink-soft)]">
+        Loading…
+      </div>
+    );
+  }
+
   async function add(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
@@ -103,73 +156,213 @@ export default function PortfolioPage() {
     setSavingOutcome(false);
   }
 
+  const portfolioTotals = useMemo(() => {
+    let cost = 0;
+    let mkt = 0;
+    for (const p of positions) {
+      const sh = parseFloat(p.shares) || 0;
+      const cb = parseFloat(p.cost_basis) || 0;
+      const q = quotes[p.ticker.toUpperCase()];
+      const px = q?.price ?? cb;
+      cost += sh * cb;
+      mkt += sh * px;
+    }
+    const pnl = mkt - cost;
+    const pnlPct = cost !== 0 ? (pnl / cost) * 100 : 0;
+    return { cost, mkt, pnl, pnlPct };
+  }, [positions, quotes]);
+
   return (
-    <div className="mx-auto max-w-4xl space-y-8 p-6 sm:p-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-white">Portfolio Tracker</h1>
-        <a href="/" className="cursor-pointer text-sm text-zinc-400 hover:text-zinc-200">
+    <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-8 px-4 py-8 sm:px-6">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--rh-border)] pb-6">
+        <div>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.25em] text-[var(--rh-green)]">
+            Positions
+          </p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-[var(--rh-ink)]">
+            Investing
+          </h1>
+          <p className="mt-1 text-sm text-[var(--rh-ink-soft)]">
+            Yahoo Finance quotes (unofficial) · delayed on many symbols
+          </p>
+        </div>
+        <a
+          href="/"
+          className="rounded-full border-2 border-[var(--rh-ink)] bg-[var(--rh-surface)] px-4 py-2 text-sm font-bold text-[var(--rh-ink)] shadow-[var(--retro-shadow-sm)] transition hover:-translate-y-0.5"
+        >
           ← Council
         </a>
       </header>
 
-      <form onSubmit={add} className="flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
-        <p className="text-xs text-zinc-500">Manual positions (MVP)</p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <input
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-sm uppercase text-white"
-            value={ticker}
-            onChange={(e) => setTicker(e.target.value.toUpperCase())}
-            placeholder="Ticker"
-          />
-          <input
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-white"
-            value={shares}
-            onChange={(e) => setShares(e.target.value)}
-            placeholder="Shares"
-          />
-          <input
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-white"
-            value={cost}
-            onChange={(e) => setCost(e.target.value)}
-            placeholder="Cost basis / share"
-          />
-          <input
-            type="date"
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-white"
-            value={entry}
-            onChange={(e) => setEntry(e.target.value)}
-          />
+      <section className="rounded-2xl border-2 border-[var(--rh-border)] bg-[var(--rh-surface)] p-6 shadow-[var(--retro-shadow)]">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--rh-ink-soft)]">
+              Total portfolio
+            </p>
+            <p className="mt-1 font-mono text-4xl font-bold tabular-nums text-[var(--rh-ink)]">
+              {formatMoney(portfolioTotals.mkt)}
+            </p>
+            <p
+              className={`mt-1 font-mono text-sm font-semibold ${
+                portfolioTotals.pnl >= 0 ? "text-[var(--rh-positive)]" : "text-[var(--rh-negative)]"
+              }`}
+            >
+              {portfolioTotals.pnl >= 0 ? "+" : ""}
+              {formatMoney(portfolioTotals.pnl)} ({portfolioTotals.pnlPct >= 0 ? "+" : ""}
+              {portfolioTotals.pnlPct.toFixed(2)}%)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refreshQuotes()}
+            disabled={quotesLoading || !tickers.length}
+            className="rounded-lg border-2 border-[var(--rh-border)] bg-[var(--rh-surface-muted)] px-4 py-2 text-sm font-bold text-[var(--rh-ink)] hover:bg-white disabled:opacity-50"
+          >
+            {quotesLoading ? "Refreshing…" : "Refresh quotes"}
+          </button>
+        </div>
+      </section>
+
+      <ul className="flex flex-col gap-3">
+        {positions.map((p) => {
+          const t = p.ticker.toUpperCase();
+          const q = quotes[t];
+          const sh = parseFloat(p.shares) || 0;
+          const cb = parseFloat(p.cost_basis) || 0;
+          const px = q?.price ?? null;
+          const posCost = sh * cb;
+          const posMkt = px !== null ? sh * px : null;
+          const posPnl = posMkt !== null ? posMkt - posCost : null;
+          const dayChg = q?.regularMarketChangePercent;
+
+          return (
+            <li
+              key={p.id}
+              className="flex flex-col gap-3 rounded-2xl border-2 border-[var(--rh-border)] bg-white p-4 shadow-[var(--retro-shadow-sm)] sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--rh-surface-muted)] font-mono text-sm font-bold text-[var(--rh-ink)]">
+                  {t.slice(0, 4)}
+                </div>
+                <div>
+                  <p className="font-mono text-lg font-bold tracking-tight text-[var(--rh-ink)]">{t}</p>
+                  <p className="text-xs text-[var(--rh-ink-soft)]">
+                    {sh} shares · cost {formatMoney(cb, q?.currency ?? "USD")} · entry {p.entry_date}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="font-mono text-xl font-bold tabular-nums text-[var(--rh-ink)]">
+                  {px !== null ? formatMoney(px, q?.currency ?? "USD") : "—"}
+                </p>
+                <div className="mt-1 flex flex-wrap justify-end gap-2 text-xs font-medium">
+                  {dayChg != null && (
+                    <span className={dayChg >= 0 ? "text-[var(--rh-positive)]" : "text-[var(--rh-negative)]"}>
+                      {dayChg >= 0 ? "+" : ""}
+                      {dayChg.toFixed(2)}% today
+                    </span>
+                  )}
+                  {posPnl !== null && (
+                    <span
+                      className={
+                        posPnl >= 0 ? "text-[var(--rh-positive)]" : "text-[var(--rh-negative)]"
+                      }
+                    >
+                      {posPnl >= 0 ? "+" : ""}
+                      {formatMoney(posPnl)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+        {positions.length === 0 && (
+          <li className="rounded-xl border-2 border-dashed border-[var(--rh-border)] bg-white/60 px-4 py-8 text-center text-sm text-[var(--rh-ink-soft)]">
+            No positions yet — add one below.
+          </li>
+        )}
+      </ul>
+
+      <form
+        onSubmit={add}
+        className="rounded-2xl border-2 border-[var(--rh-border)] bg-[var(--rh-surface)] p-5 shadow-[var(--retro-shadow-sm)]"
+      >
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--rh-green)]">
+          Add position
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs font-semibold uppercase text-[var(--rh-ink-soft)]">
+            Symbol
+            <input
+              className="rounded-lg border border-[var(--rh-border)] bg-[var(--rh-surface-muted)] px-3 py-2 font-mono text-sm font-bold uppercase text-[var(--rh-ink)]"
+              value={ticker}
+              onChange={(e) => setTicker(e.target.value.toUpperCase())}
+              placeholder="AAPL"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold uppercase text-[var(--rh-ink-soft)]">
+            Shares
+            <input
+              className="rounded-lg border border-[var(--rh-border)] bg-white px-3 py-2 font-mono text-sm text-[var(--rh-ink)]"
+              value={shares}
+              onChange={(e) => setShares(e.target.value)}
+              inputMode="decimal"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold uppercase text-[var(--rh-ink-soft)]">
+            Avg cost / share
+            <input
+              className="rounded-lg border border-[var(--rh-border)] bg-white px-3 py-2 font-mono text-sm text-[var(--rh-ink)]"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              inputMode="decimal"
+              placeholder="120.00"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold uppercase text-[var(--rh-ink-soft)]">
+            Entry date
+            <input
+              type="date"
+              className="rounded-lg border border-[var(--rh-border)] bg-white px-3 py-2 text-sm text-[var(--rh-ink)]"
+              value={entry}
+              onChange={(e) => setEntry(e.target.value)}
+            />
+          </label>
         </div>
         <button
           type="submit"
           disabled={saving}
-          className="min-h-11 cursor-pointer rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-4 w-full rounded-xl bg-[var(--rh-green)] py-3 text-sm font-bold text-white shadow-[var(--retro-shadow-sm)] hover:bg-[var(--rh-green-dark)] disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Add position"}
+          {saving ? "Saving…" : "Add to portfolio"}
         </button>
-        {msg && <p className="text-xs text-zinc-300">{msg}</p>}
+        {msg && <p className="mt-2 text-center text-xs font-medium text-[var(--rh-ink-soft)]">{msg}</p>}
       </form>
 
       <form
         onSubmit={logOutcome}
-        className="flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4"
+        className="rounded-2xl border-2 border-[var(--rh-border)] bg-[var(--rh-surface-muted)] p-5"
       >
-        <p className="text-xs text-zinc-500">Track recommendation outcome</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--rh-ink-soft)]">
+          Track council outcome
+        </p>
         <select
-          className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-white"
+          className="mt-2 w-full rounded-lg border border-[var(--rh-border)] bg-white px-3 py-2 text-sm text-[var(--rh-ink)]"
           value={analysisId}
           onChange={(e) => setAnalysisId(e.target.value)}
         >
           {analyses.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.ticker} • {a.final_recommendation} ({a.consensus_confidence}%) •{" "}
+              {a.ticker} · {a.final_recommendation} ({a.consensus_confidence}%) ·{" "}
               {new Date(a.analysis_date).toLocaleDateString()}
             </option>
           ))}
         </select>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <select
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-white"
+            className="rounded-lg border border-[var(--rh-border)] bg-white px-2 py-2 text-sm text-[var(--rh-ink)]"
             value={action}
             onChange={(e) =>
               setAction(e.target.value as "followed" | "ignored" | "opposite")
@@ -180,13 +373,13 @@ export default function PortfolioPage() {
             <option value="opposite">Opposite</option>
           </select>
           <input
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-white"
+            className="rounded-lg border border-[var(--rh-border)] bg-white px-2 py-2 font-mono text-sm"
             placeholder="Entry"
             value={entryPrice}
             onChange={(e) => setEntryPrice(e.target.value)}
           />
           <input
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-white"
+            className="rounded-lg border border-[var(--rh-border)] bg-white px-2 py-2 font-mono text-sm"
             placeholder="Current"
             value={currentPrice}
             onChange={(e) => setCurrentPrice(e.target.value)}
@@ -195,26 +388,18 @@ export default function PortfolioPage() {
         <button
           type="submit"
           disabled={savingOutcome}
-          className="min-h-11 cursor-pointer rounded-lg bg-zinc-800 py-2 text-sm font-semibold text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-4 w-full rounded-xl border-2 border-[var(--rh-ink)] bg-[var(--rh-surface)] py-3 text-sm font-bold text-[var(--rh-ink)] hover:bg-white disabled:opacity-50"
         >
-          {savingOutcome ? "Saving..." : "Log outcome"}
+          {savingOutcome ? "Saving…" : "Log outcome"}
         </button>
-        {outcomeMsg && <p className="text-xs text-zinc-300">{outcomeMsg}</p>}
+        {outcomeMsg && (
+          <p className="mt-2 text-center text-xs font-medium text-[var(--rh-ink)]">{outcomeMsg}</p>
+        )}
       </form>
 
-      <ul className="grid gap-2 sm:grid-cols-2">
-        {positions.map((p) => (
-          <li
-            key={p.id}
-            className="rounded-xl border border-zinc-800 px-4 py-3 font-mono text-sm text-zinc-200"
-          >
-            {p.ticker} — {p.shares} sh @ $${p.cost_basis} — entry {p.entry_date}
-          </li>
-        ))}
-        {positions.length === 0 && (
-          <li className="text-sm text-zinc-500">No positions yet.</li>
-        )}
-      </ul>
+      <footer className="border-t border-[var(--rh-border)] pt-4 text-center text-[10px] text-[var(--rh-ink-soft)]">
+        Quotes via Yahoo (unofficial). For entertainment only — not financial advice.
+      </footer>
     </div>
   );
 }
