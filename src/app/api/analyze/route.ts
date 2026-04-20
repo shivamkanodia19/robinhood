@@ -74,7 +74,16 @@ export async function POST(req: Request) {
       modelDiagnostics.attempted_models.push(candidate);
       const llm = await runAllAgentsWithDiagnostics(apiKey, candidate, metrics);
       const allFailed = llm.votes.every((v) => v.confidence === 0);
-      const missingModel = llm.errors.some((err) => err.includes("not_found_error"));
+      const modelRejected = llm.errors.some((err) => {
+        const m = err.toLowerCase();
+        return (
+          m.includes("not_found_error") ||
+          m.includes("deprecated") ||
+          m.includes("end-of-life") ||
+          m.includes("invalid model") ||
+          m.includes("model")
+        );
+      });
 
       if (!allFailed) {
         votes = llm.votes;
@@ -84,16 +93,21 @@ export async function POST(req: Request) {
         break;
       }
 
-      if (!missingModel) {
+      // If the model itself is invalid/deprecated, try the next candidate.
+      if (modelRejected) {
+        modelDiagnostics.failed_agents = llm.failedAgents;
+        modelDiagnostics.errors = llm.errors;
+        continue;
+      }
+
+      // Otherwise, assume temporary runtime failure and use deterministic fallback.
+      if (!modelRejected) {
         modelDiagnostics.used_rule_fallback = true;
         modelDiagnostics.selected_model = candidate;
         modelDiagnostics.failed_agents = llm.failedAgents;
         modelDiagnostics.errors = llm.errors;
         break;
       }
-
-      modelDiagnostics.failed_agents = llm.failedAgents;
-      modelDiagnostics.errors = llm.errors;
     }
 
     if (!modelDiagnostics.selected_model) {
