@@ -51,31 +51,54 @@ export async function POST(req: Request) {
     );
   }
 
-  // Cost + consistency guardrail: force Haiku-only for now.
-  const requestedModel = process.env.ANTHROPIC_MODEL ?? "claude-3-5-haiku-20241022";
-  const model = requestedModel.includes("haiku")
-    ? requestedModel
-    : "claude-3-5-haiku-20241022";
+  const requestedModel = process.env.ANTHROPIC_MODEL ?? "claude-3-5-haiku-latest";
+  const modelCandidates = Array.from(
+    new Set([
+      requestedModel,
+      "claude-3-5-haiku-latest",
+      "claude-3-5-haiku-20241022",
+    ]),
+  );
   const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
 
   const modelDiagnostics = {
     used_rule_fallback: false,
+    attempted_models: [] as string[],
+    selected_model: null as string | null,
     failed_agents: [] as string[],
     errors: [] as string[],
   };
   let votes = ruleBasedVotes(metrics);
   if (hasAnthropic()) {
-    const llm = await runAllAgentsWithDiagnostics(apiKey, model, metrics);
-    const allFailed = llm.votes.every((v) => v.confidence === 0);
-    if (allFailed) {
+    for (const candidate of modelCandidates) {
+      modelDiagnostics.attempted_models.push(candidate);
+      const llm = await runAllAgentsWithDiagnostics(apiKey, candidate, metrics);
+      const allFailed = llm.votes.every((v) => v.confidence === 0);
+      const missingModel = llm.errors.some((err) => err.includes("not_found_error"));
+
+      if (!allFailed) {
+        votes = llm.votes;
+        modelDiagnostics.selected_model = candidate;
+        modelDiagnostics.failed_agents = llm.failedAgents;
+        modelDiagnostics.errors = llm.errors;
+        break;
+      }
+
+      if (!missingModel) {
+        modelDiagnostics.used_rule_fallback = true;
+        modelDiagnostics.selected_model = candidate;
+        modelDiagnostics.failed_agents = llm.failedAgents;
+        modelDiagnostics.errors = llm.errors;
+        break;
+      }
+
+      modelDiagnostics.failed_agents = llm.failedAgents;
+      modelDiagnostics.errors = llm.errors;
+    }
+
+    if (!modelDiagnostics.selected_model) {
       modelDiagnostics.used_rule_fallback = true;
-      modelDiagnostics.failed_agents = llm.failedAgents;
-      modelDiagnostics.errors = llm.errors;
       votes = ruleBasedVotes(metrics);
-    } else {
-      votes = llm.votes;
-      modelDiagnostics.failed_agents = llm.failedAgents;
-      modelDiagnostics.errors = llm.errors;
     }
   } else {
     modelDiagnostics.used_rule_fallback = true;

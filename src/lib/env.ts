@@ -4,7 +4,7 @@ const schema = z.object({
   NEXTAUTH_SECRET: z.string().min(8).default("dev-only-change-me"),
   NEXTAUTH_URL: z.string().url().optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  ANTHROPIC_MODEL: z.string().default("claude-3-5-haiku-20241022"),
+  ANTHROPIC_MODEL: z.string().default("claude-3-5-haiku-latest"),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
 });
