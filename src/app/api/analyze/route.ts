@@ -53,7 +53,11 @@ export async function POST(req: Request) {
     );
   }
 
-  const model = process.env.ANTHROPIC_MODEL ?? "claude-3-5-haiku-20241022";
+  // Cost + consistency guardrail: force Haiku-only for now.
+  const requestedModel = process.env.ANTHROPIC_MODEL ?? "claude-3-5-haiku-20241022";
+  const model = requestedModel.includes("haiku")
+    ? requestedModel
+    : "claude-3-5-haiku-20241022";
   const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
 
   const votes = hasAnthropic()
