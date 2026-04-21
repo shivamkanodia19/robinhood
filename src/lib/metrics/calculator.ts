@@ -1,6 +1,7 @@
 import YahooFinance from "yahoo-finance2";
 import type { StockMetricsPayload } from "./types";
 import { getCachedMetrics, setCachedMetrics } from "./cache";
+import { validateMetrics } from "./validate";
 
 const yahooFinance = new YahooFinance();
 
@@ -78,7 +79,7 @@ export async function computeStockMetrics(
   const cf = summary.cashflowStatementHistoryQuarterly?.cashflowStatements?.[0] as
     | Record<string, unknown>
     | undefined;
-  const inc = summary.incomeStatementHistoryQuarterly?.incomeStatementHistory?.[0];
+  const qIncAll = summary.incomeStatementHistoryQuarterly?.incomeStatementHistory ?? [];
 
   const price = num(fin?.currentPrice ?? det?.regularMarketPreviousClose ?? det?.regularMarketPrice);
   const shares = num(dks?.sharesOutstanding);
@@ -86,8 +87,29 @@ export async function computeStockMetrics(
   const enterpriseValue = num(fin?.enterpriseValue ?? dks?.enterpriseValue);
 
   const fcf = num(fin?.freeCashflow ?? cf?.freeCashflow);
-  const netIncome = num(inc?.netIncome);
-  const revenue = num(inc?.totalRevenue);
+
+  const ttmSum = (
+    key: "netIncome" | "totalRevenue",
+    label: "ttm_net_income" | "ttm_revenue",
+  ): number | null => {
+    const recent = qIncAll.slice(0, 4);
+    const values = recent
+      .map((q) => num(q?.[key]))
+      .filter((x): x is number => x !== null);
+    if (values.length === 0) {
+      warnings.push(`${label}: no quarterly statements available`);
+      return null;
+    }
+    if (values.length < 4) {
+      warnings.push(
+        `${label}: only ${values.length} quarter${values.length === 1 ? "" : "s"} available; TTM figures approximate`,
+      );
+    }
+    return values.reduce((a, b) => a + b, 0);
+  };
+
+  const netIncome = ttmSum("netIncome", "ttm_net_income");
+  const revenue = ttmSum("totalRevenue", "ttm_revenue");
   const totalDebt = num(bs?.longTermDebt) !== null && num(bs?.shortLongTermDebt) !== null
     ? (num(bs?.longTermDebt) ?? 0) + (num(bs?.shortLongTermDebt) ?? 0)
     : num(bs?.totalDebt);
@@ -146,8 +168,7 @@ export async function computeStockMetrics(
 
   const beta = num(dks?.beta);
 
-  const qInc = summary.incomeStatementHistoryQuarterly?.incomeStatementHistory ?? [];
-  const niSeries = qInc
+  const niSeries = qIncAll
     .map((q) => num(q?.netIncome))
     .filter((x): x is number => x !== null && Number.isFinite(x))
     .slice(0, 8);
@@ -156,19 +177,19 @@ export async function computeStockMetrics(
   const trend = summary.recommendationTrend?.trend?.[0];
   const strongBuy = num(trend?.strongBuy) ?? 0;
   const buy = num(trend?.buy) ?? 0;
-  const hold = num(trend?.hold) ?? 0;
   const sell = num(trend?.sell) ?? 0;
   const strongSell = num(trend?.strongSell) ?? 0;
   const analyst_downgrades_3mo =
     sell + strongSell > strongBuy + buy ? Math.round(sell + strongSell) : 0;
 
   const pe_hist = num(dks?.trailingPE);
-  const pe_5y_avg = pe_hist !== null ? pe_hist * 0.92 : null;
-  const pe_vs_5y_avg_ratio =
-    pe_ratio !== null && pe_5y_avg !== null && pe_5y_avg !== 0 ? pe_ratio / pe_5y_avg : null;
-
+  // NOTE: yahoo-finance2 does not expose 5y average P/E; leave null until a real source is wired in.
+  const pe_5y_avg: number | null = null;
+  const pe_vs_5y_avg_ratio: number | null = null;
   if (pe_hist === null) {
-    warnings.push("pe_history: trailing P/E missing; contrarian valuation vs history may be neutral.");
+    warnings.push("pe_history: trailing P/E missing; contrarian valuation vs history unavailable.");
+  } else {
+    warnings.push("pe_5y_avg: no historical average source; contrarian ratio not computed.");
   }
 
   const div_yield_5y_avg_pct = num(dks?.fiveYearAvgDividendYield)
@@ -231,6 +252,7 @@ export async function computeStockMetrics(
       : null;
 
   const sector = profile?.sector ?? "Unknown";
+  // Static sector medians — documented proxies, NOT live data. Phase 3 prompts must label these as proxies.
   const sector_pb_median_proxy = sector.includes("Tech") ? 5.5 : sector.includes("Financial") ? 1.2 : 2.5;
   const sector_roe_median_proxy = 12;
   const sector_short_median_proxy = 3;
@@ -267,7 +289,7 @@ export async function computeStockMetrics(
     ma_200: ma200,
     insider_buys_3mo: null,
     insider_sells_3mo: null,
-    news_sentiment_score: 50,
+    news_sentiment_score: null,
     earnings_volatility_coeff,
     semi_deviation_monthly: semi_deviation_monthly,
     pe_vs_5y_avg_ratio,
@@ -286,6 +308,7 @@ export async function computeStockMetrics(
     earnings_growth_consensus_pct: num(fin?.earningsGrowth) ? (num(fin?.earningsGrowth) ?? 0) * 100 : null,
     earnings_consensus_std_pct: null,
     data_warnings: warnings,
+    metric_flags: [],
   };
 
   try {
@@ -316,6 +339,7 @@ export async function computeStockMetrics(
     };
   }
 
+  payload = validateMetrics(payload);
   setCachedMetrics(ticker, payload);
   return payload;
 }

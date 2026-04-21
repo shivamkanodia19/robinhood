@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { computeStockMetrics } from "@/lib/metrics/calculator";
-import { buildConsensus } from "@/lib/consensus";
+import { buildConsensus, type ConsensusResult } from "@/lib/consensus";
 import { runAllAgentsWithDiagnostics } from "@/lib/agents/runAgents";
 import { ruleBasedVotes } from "@/lib/agents/ruleFallback";
 import { getAnthropicApiKeys, hasAnthropic, hasSupabase } from "@/lib/env";
@@ -47,7 +47,10 @@ export async function POST(req: Request) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Market data unavailable";
     return NextResponse.json(
-      { error: "We could not load market data for that symbol. Try another ticker." },
+      {
+        error: "We could not load market data for that symbol. Try another ticker.",
+        detail: msg,
+      },
       { status: 422 },
     );
   }
@@ -100,7 +103,29 @@ export async function POST(req: Request) {
     modelDiagnostics.errors = ["No ANTHROPIC_API_KEY configured."];
   }
 
-  const consensus = buildConsensus(votes);
+  const consensus = buildConsensus(votes, metrics);
+
+  // Top-level data-quality summary, derived from metric flags + any capped votes.
+  // Phase 5 adds data_quality_penalty/data_quality_note to ConsensusResult; we
+  // mirror the note here so the UI can render a single banner without walking
+  // both `metrics.metric_flags` and `consensus.agents`.
+  const metricFlags = metrics.metric_flags ?? [];
+  const hardFlags = metricFlags.filter((f) => f.severity === "hard");
+  const softFlags = metricFlags.filter((f) => f.severity === "soft");
+  const cappedVotes = votes
+    .filter((v) => v.capped_reason)
+    .map((v) => ({ agent: v.agent, capped_reason: v.capped_reason as string }));
+  const consensusAny = consensus as ConsensusResult & {
+    data_quality_penalty?: number;
+    data_quality_note?: string;
+  };
+  const data_quality = {
+    hard_flags: hardFlags,
+    soft_flags: softFlags,
+    capped_votes: cappedVotes,
+    note: consensusAny.data_quality_note ?? "",
+  };
+
   let resolvedProfile = toInvestingProfile(profile);
   let previousWeightedScore: number | null = null;
 
@@ -142,7 +167,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const weighted = buildWeightedConsensus(votes, resolvedProfile);
+  const weighted = buildWeightedConsensus(votes, resolvedProfile, metrics);
   const conviction = computeConvictionChange(
     weighted.weighted_score,
     previousWeightedScore,
@@ -190,8 +215,11 @@ export async function POST(req: Request) {
   return NextResponse.json({
     mode: mode ?? "decision",
     analysis_id: analysisId,
+    ticker: metrics.ticker,
     metrics,
+    votes,
     consensus,
+    data_quality,
     weighted_consensus: weighted,
     conviction_change: conviction,
     profile: resolvedProfile,

@@ -50,6 +50,7 @@ function mockMetrics(over: Partial<StockMetricsPayload> = {}): StockMetricsPaylo
     earnings_growth_consensus_pct: 8,
     earnings_consensus_std_pct: null,
     data_warnings: [],
+    metric_flags: [],
     ...over,
   };
 }
@@ -61,5 +62,102 @@ describe("ruleBasedVotes determinism", () => {
     for (let i = 0; i < 9; i++) {
       expect(JSON.stringify(ruleBasedVotes(m))).toBe(first);
     }
+  });
+
+  it("returns 6 votes in canonical order when no flags are present", () => {
+    const m = mockMetrics();
+    const votes = ruleBasedVotes(m);
+    expect(votes.map((v) => v.agent)).toEqual([
+      "value",
+      "momentum",
+      "quality",
+      "contrarian",
+      "macro",
+      "lowvol",
+    ]);
+  });
+});
+
+describe("ruleBasedVotes - hard flag suppression", () => {
+  it("suppresses quality vote to HOLD @ 50 when roe_pct is hard-flagged", () => {
+    const m = mockMetrics({
+      roe_pct: 76.87,
+      metric_flags: [
+        {
+          metric: "roe_pct",
+          value: 76.87,
+          severity: "hard",
+          family: "fundamental",
+          reason: "ROE exceeds S&P top-0.1%",
+        },
+      ],
+    });
+    const votes = ruleBasedVotes(m);
+    const quality = votes.find((v) => v.agent === "quality")!;
+    expect(quality.recommendation).toBe("HOLD");
+    expect(quality.confidence).toBe(50);
+    expect(quality.key_risk).toContain("roe_pct");
+  });
+
+  it("suppresses lowvol vote to HOLD @ 50 when beta is hard-flagged", () => {
+    const m = mockMetrics({
+      beta: 0.05,
+      metric_flags: [
+        {
+          metric: "beta",
+          value: 0.05,
+          severity: "hard",
+          family: "price",
+          reason: "Beta implausibly low",
+        },
+      ],
+    });
+    const votes = ruleBasedVotes(m);
+    const lowvol = votes.find((v) => v.agent === "lowvol")!;
+    expect(lowvol.recommendation).toBe("HOLD");
+    expect(lowvol.confidence).toBe(50);
+    expect(lowvol.key_risk).toContain("beta");
+  });
+
+  it("suppresses contrarian vote to HOLD @ 50 when pe_ratio is hard-flagged", () => {
+    const m = mockMetrics({
+      pe_ratio: 150,
+      pe_vs_5y_avg_ratio: 0.7,
+      metric_flags: [
+        {
+          metric: "pe_ratio",
+          value: 150,
+          severity: "hard",
+          family: "fundamental",
+          reason: "P/E above 120",
+        },
+      ],
+    });
+    const votes = ruleBasedVotes(m);
+    const contrarian = votes.find((v) => v.agent === "contrarian")!;
+    expect(contrarian.recommendation).toBe("HOLD");
+    expect(contrarian.confidence).toBe(50);
+    expect(contrarian.key_risk).toContain("pe_ratio");
+  });
+
+  it("suppresses momentum vote to HOLD @ 50 when momentum_12m_pct is hard-flagged", () => {
+    const m = mockMetrics({
+      momentum_12m_pct: 300,
+      price_vs_ma_200_pct: 60,
+      metric_flags: [
+        {
+          metric: "momentum_12m_pct",
+          value: 300,
+          severity: "hard",
+          family: "price",
+          reason: "Momentum extreme",
+        },
+      ],
+    });
+    const votes = ruleBasedVotes(m);
+    const momentum = votes.find((v) => v.agent === "momentum")!;
+    expect(momentum.recommendation).toBe("HOLD");
+    expect(momentum.confidence).toBe(50);
+    expect(momentum.key_risk).toContain("momentum_12m_pct");
   });
 });

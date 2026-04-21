@@ -5,6 +5,18 @@ import { useCallback, useEffect, useState } from "react";
 
 type InvestingProfile = "value" | "growth" | "momentum" | "income" | "balanced";
 
+type AgentVoteView = {
+  agent: string;
+  recommendation: string;
+  confidence: number;
+  thesis: string;
+  key_metric: string;
+  key_risk: string;
+  failed?: boolean;
+  grounded?: boolean;
+  capped_reason?: string;
+};
+
 type Consensus = {
   final_recommendation: string;
   consensus_confidence: number;
@@ -12,15 +24,24 @@ type Consensus = {
   key_disagreement: string;
   next_checkpoint: string;
   vote_breakdown: { buy: number; hold: number; sell: number };
-  agents: Array<{
-    agent: string;
-    recommendation: string;
-    confidence: number;
-    thesis: string;
-    key_metric: string;
-    key_risk: string;
-    failed?: boolean;
-  }>;
+  agents: AgentVoteView[];
+  data_quality_penalty?: number;
+  data_quality_note?: string;
+};
+
+type MetricFlagView = {
+  metric: string;
+  value: number | null;
+  severity: "soft" | "hard";
+  family: "fundamental" | "price" | "macro";
+  reason: string;
+};
+
+type DataQuality = {
+  hard_flags: MetricFlagView[];
+  soft_flags: MetricFlagView[];
+  capped_votes: Array<{ agent: string; capped_reason: string }>;
+  note: string;
 };
 
 type WeightedConsensus = {
@@ -60,6 +81,8 @@ export function Dashboard() {
     as_of?: string;
     data_freshness_note?: string;
   } | null>(null);
+  const [dataQuality, setDataQuality] = useState<DataQuality | null>(null);
+  const [dqExpanded, setDqExpanded] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [openAgent, setOpenAgent] = useState<string | null>(null);
 
@@ -78,6 +101,8 @@ export function Dashboard() {
     setError(null);
     setConsensus(null);
     setDataSnapshot(null);
+    setDataQuality(null);
+    setDqExpanded(false);
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
@@ -97,6 +122,7 @@ export function Dashboard() {
         });
       }
       setConsensus(data.consensus);
+      setDataQuality((data.data_quality as DataQuality | undefined) ?? null);
       setWeighted(data.weighted_consensus ?? null);
       setConviction(data.conviction_change ?? null);
       setDegraded(data.degraded_message);
@@ -214,6 +240,104 @@ export function Dashboard() {
 
       {consensus && (
         <>
+          {(() => {
+            const hardCount = dataQuality?.hard_flags.length ?? 0;
+            const penalty = consensus.data_quality_penalty ?? 0;
+            const note = dataQuality?.note || consensus.data_quality_note || "";
+            const show = hardCount > 0 || penalty > 0;
+            if (!show) return null;
+            return (
+              <section className="rounded-2xl border-2 border-amber-400 bg-amber-100 p-4 text-amber-900 shadow-[var(--retro-shadow-sm)]">
+                <div className="flex items-start gap-3">
+                  <svg
+                    className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-700"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold">Data quality warning</p>
+                    {note && (
+                      <p className="mt-1 text-sm leading-relaxed">{note}</p>
+                    )}
+                    {(dataQuality?.hard_flags.length ||
+                      dataQuality?.capped_votes.length) && (
+                      <button
+                        type="button"
+                        onClick={() => setDqExpanded((v) => !v)}
+                        className="mt-2 cursor-pointer text-xs font-bold text-amber-900 underline-offset-2 hover:underline"
+                      >
+                        {dqExpanded ? "Hide details" : "Show details"} ▼
+                      </button>
+                    )}
+                    {dqExpanded && dataQuality && (
+                      <div className="mt-2 space-y-2 text-xs">
+                        {dataQuality.hard_flags.length > 0 && (
+                          <div>
+                            <p className="font-semibold uppercase tracking-wide text-amber-800">
+                              Hard flags
+                            </p>
+                            <ul className="mt-1 list-disc pl-5">
+                              {dataQuality.hard_flags.map((f) => (
+                                <li key={`hard-${f.metric}`}>
+                                  <span className="font-mono">{f.metric}</span> ={" "}
+                                  <span className="font-mono">
+                                    {f.value === null ? "null" : String(f.value)}
+                                  </span>
+                                  : {f.reason}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {dataQuality.soft_flags.length > 0 && (
+                          <div>
+                            <p className="font-semibold uppercase tracking-wide text-amber-800">
+                              Soft flags
+                            </p>
+                            <ul className="mt-1 list-disc pl-5">
+                              {dataQuality.soft_flags.map((f) => (
+                                <li key={`soft-${f.metric}`}>
+                                  <span className="font-mono">{f.metric}</span> ={" "}
+                                  <span className="font-mono">
+                                    {f.value === null ? "null" : String(f.value)}
+                                  </span>
+                                  : {f.reason}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {dataQuality.capped_votes.length > 0 && (
+                          <div>
+                            <p className="font-semibold uppercase tracking-wide text-amber-800">
+                              Capped votes
+                            </p>
+                            <ul className="mt-1 list-disc pl-5">
+                              {dataQuality.capped_votes.map((c) => (
+                                <li key={`cap-${c.agent}`}>
+                                  <span className="capitalize">{c.agent}</span>
+                                  : {c.capped_reason}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            );
+          })()}
           <section className="rounded-2xl border-2 border-[var(--rh-border)] bg-[var(--rh-surface)] p-6 shadow-[var(--retro-shadow)]">
             <p className="text-xs font-semibold uppercase tracking-wider text-[var(--rh-ink-soft)]">
               Synthesis (not financial advice)
@@ -318,12 +442,20 @@ export function Dashboard() {
                           ) : null}
                         </span>
                         <span
-                          className={`font-mono text-sm font-bold ${recColor[a.recommendation]}`}
+                          className={`flex items-center gap-2 font-mono text-sm font-bold ${recColor[a.recommendation]}`}
                         >
                           {a.recommendation}{" "}
                           <span className="font-sans font-normal text-[var(--rh-ink-soft)]">
                             ({a.confidence}%)
                           </span>
+                          {a.capped_reason && (
+                            <span
+                              title={a.capped_reason}
+                              className="rounded-full bg-gray-200 px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wide text-gray-700"
+                            >
+                              capped
+                            </span>
+                          )}
                         </span>
                       </button>
                       {open && (

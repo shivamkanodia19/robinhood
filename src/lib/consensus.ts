@@ -1,4 +1,4 @@
-import type { AgentKind } from "@/lib/metrics/types";
+import type { AgentKind, StockMetricsPayload } from "@/lib/metrics/types";
 
 export interface AgentVote {
   agent: AgentKind;
@@ -9,6 +9,10 @@ export interface AgentVote {
   key_risk: string;
   /** Model or parse failure — excluded from vote tallies and confidence averages */
   failed?: boolean;
+  /** Set by groundVote: true if at least one numeric claim matched the validated snapshot */
+  grounded?: boolean;
+  /** Human-readable reason confidence was capped/reduced during grounding */
+  capped_reason?: string;
 }
 
 export interface ConsensusResult {
@@ -19,6 +23,10 @@ export interface ConsensusResult {
   next_checkpoint: string;
   vote_breakdown: { buy: number; hold: number; sell: number };
   agents: AgentVote[];
+  /** Points subtracted from consensus_confidence due to capped agent votes (0..20) */
+  data_quality_penalty: number;
+  /** Human-readable explanation of penalty and any safety downgrade; "" when none applied */
+  data_quality_note: string;
 }
 
 function avg(nums: number[]): number {
@@ -26,7 +34,10 @@ function avg(nums: number[]): number {
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
-export function buildConsensus(votes: AgentVote[]): ConsensusResult {
+export function buildConsensus(
+  votes: AgentVote[],
+  metrics?: StockMetricsPayload,
+): ConsensusResult {
   const active = votes.filter((v) => !v.failed);
   const failedCount = votes.length - active.length;
 
@@ -40,7 +51,7 @@ export function buildConsensus(votes: AgentVote[]): ConsensusResult {
     (r) => counts[r] === maxCount,
   );
 
-  const final_recommendation: ConsensusResult["final_recommendation"] =
+  let final_recommendation: ConsensusResult["final_recommendation"] =
     active.length === 0
       ? "MIXED"
       : leaders.length !== 1
@@ -95,9 +106,44 @@ export function buildConsensus(votes: AgentVote[]): ConsensusResult {
   const next_checkpoint =
     "Review if Treasury yields, earnings revisions, or price vs 200-day MA shift materially.";
 
+  // Phase 5: data-quality penalty + safety downgrade
+  // 1 capped vote = -5 (one agent's reasoning got clipped), 2 = -10, 3 = -15,
+  // 4+ = -20 (floor). Ceiling chosen because below 20 we can still represent a
+  // valid BUY with moderate conviction; above 20 we would routinely invert the
+  // verdict on a single bad snapshot, which is too aggressive.
+  const cappedCount = votes.filter(
+    (v) => !v.failed && v.capped_reason,
+  ).length;
+  const data_quality_penalty =
+    cappedCount >= 1 ? Math.min(20, 5 * cappedCount) : 0;
+  const adjustedConfidence = Math.max(
+    0,
+    consensus_confidence - data_quality_penalty,
+  );
+
+  const hardFundamentalFlags = (metrics?.metric_flags ?? []).filter(
+    (f) => f.severity === "hard" && f.family === "fundamental",
+  );
+
+  let data_quality_note = "";
+  if (data_quality_penalty > 0) {
+    data_quality_note = `${cappedCount} agent${cappedCount === 1 ? "" : "s"} had confidence capped by grounding or flag checks; consensus confidence reduced by ${data_quality_penalty}.`;
+  }
+  if (
+    hardFundamentalFlags.length > 0 &&
+    final_recommendation === "BUY" &&
+    adjustedConfidence < 60
+  ) {
+    final_recommendation = "HOLD";
+    const names = hardFundamentalFlags.map((f) => f.metric).join(", ");
+    data_quality_note =
+      (data_quality_note ? data_quality_note + " " : "") +
+      `Downgraded BUY → HOLD: adjustedConfidence ${adjustedConfidence} is below 60 and fundamentals have hard flags (${names}).`;
+  }
+
   return {
     final_recommendation,
-    consensus_confidence,
+    consensus_confidence: adjustedConfidence,
     final_thesis,
     key_disagreement,
     next_checkpoint,
@@ -107,9 +153,14 @@ export function buildConsensus(votes: AgentVote[]): ConsensusResult {
       sell: counts.SELL,
     },
     agents: votes,
+    data_quality_penalty,
+    data_quality_note,
   };
 }
 
-export function consensusFromVotes(votes: AgentVote[]): ConsensusResult {
-  return buildConsensus(votes);
+export function consensusFromVotes(
+  votes: AgentVote[],
+  metrics?: StockMetricsPayload,
+): ConsensusResult {
+  return buildConsensus(votes, metrics);
 }

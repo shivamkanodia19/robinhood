@@ -15,84 +15,194 @@ function dataPreamble(m: StockMetricsPayload): string {
 `;
 }
 
-const templates: Record<AgentKind, (m: StockMetricsPayload) => string> = {
-  value: (m) => `${dataPreamble(m)}You are a value investor analyzing ${m.ticker} using fundamental analysis.
+/**
+ * Full canonical snapshot of every numeric field any agent may cite.
+ * Every persona sees the same SHARED FACTS so they can cross-reference.
+ * Field order groups related metrics; lines use canonical field names so agents
+ * can echo them back for Phase 4 grounding.
+ */
+export function sharedFacts(m: StockMetricsPayload): string {
+  const lines: string[] = [
+    "SHARED FACTS (canonical field names; cite these verbatim):",
+    // Valuation
+    `- pe_ratio (trailing): ${fmt(m.pe_ratio)}`,
+    `- forward_pe: ${fmt(m.forward_pe)}`,
+    `- pb_ratio: ${fmt(m.pb_ratio)}`,
+    `- ps_ratio: ${fmt(m.ps_ratio)}`,
+    `- pe_vs_5y_avg_ratio: ${fmt(m.pe_vs_5y_avg_ratio)}`,
+    `- pe_5y_avg: ${fmt(m.pe_5y_avg)}`,
+    // Quality
+    `- roe_pct: ${fmt(m.roe_pct, "%")}`,
+    `- net_margin_pct: ${fmt(m.net_margin_pct, "%")}`,
+    `- debt_to_equity: ${fmt(m.debt_to_equity)}`,
+    `- debt_to_ebitda: ${fmt(m.debt_to_ebitda)}`,
+    `- earnings_volatility_coeff: ${fmt(m.earnings_volatility_coeff)}`,
+    // Cash
+    `- fcf: ${fmt(m.fcf)}`,
+    `- net_income: ${fmt(m.net_income)}`,
+    `- fcf_yield_pct: ${fmt(m.fcf_yield_pct, "%")}`,
+    `- fcf_vs_earnings_ratio: ${fmt(m.fcf_vs_earnings_ratio)}`,
+    `- revenue: ${fmt(m.revenue)}`,
+    `- cash_pct_of_assets: ${fmt(m.cash_pct_of_assets, "%")}`,
+    // Price
+    `- price: ${fmt(m.price)}`,
+    `- momentum_12m_pct: ${fmt(m.momentum_12m_pct, "%")}`,
+    `- price_vs_ma_50_pct: ${fmt(m.price_vs_ma_50_pct, "%")}`,
+    `- price_vs_ma_200_pct: ${fmt(m.price_vs_ma_200_pct, "%")}`,
+    `- ma_50: ${fmt(m.ma_50)}`,
+    `- ma_200: ${fmt(m.ma_200)}`,
+    `- beta: ${fmt(m.beta)}`,
+    `- semi_deviation_monthly: ${fmt(m.semi_deviation_monthly)}`,
+    // Income
+    `- dividend_yield_pct: ${fmt(m.dividend_yield_pct, "%")}`,
+    `- div_yield_5y_avg_pct: ${fmt(m.div_yield_5y_avg_pct, "%")}`,
+    `- div_yield_vs_5y_avg_ratio: ${fmt(m.div_yield_vs_5y_avg_ratio)}`,
+    // Macro
+    `- treasury_10y_pct: ${fmt(m.treasury_10y_pct, "%")}`,
+    `- yield_spread_vs_treasury_pct: ${fmt(m.yield_spread_vs_treasury_pct, "%")}`,
+    // Growth
+    `- earnings_growth_consensus_pct: ${fmt(m.earnings_growth_consensus_pct, "%")}`,
+    `- earnings_consensus_std_pct: ${fmt(m.earnings_consensus_std_pct, "%")}`,
+    // Analyst / Short
+    `- analyst_downgrades_3mo: ${m.analyst_downgrades_3mo ?? "N/A"}`,
+    `- short_interest_pct: ${fmt(m.short_interest_pct, "%")}`,
+    // Sector proxies (labeled as proxy, not live)
+    `- sector_pb_median_proxy (proxy, not live): ${fmt(m.sector_pb_median_proxy)}`,
+    `- sector_roe_median_proxy (proxy, not live): ${fmt(m.sector_roe_median_proxy, "%")}`,
+    `- sector_short_median_proxy (proxy, not live): ${fmt(m.sector_short_median_proxy, "%")}`,
+  ];
+  return lines.join("\n");
+}
 
-Key principle: The market may misprice fundamentals. Find bargains where earnings power exceeds the market price.
+export function flagsSection(m: StockMetricsPayload): string {
+  if (!m.metric_flags || m.metric_flags.length === 0) {
+    return "FLAGS: none";
+  }
+  const rendered = m.metric_flags
+    .map((f) => {
+      const valueStr = f.value === null || f.value === undefined ? "N/A" : String(f.value);
+      return `- [${f.severity.toUpperCase()}] ${f.metric} = ${valueStr}: ${f.reason}`;
+    })
+    .join("\n");
+  return `FLAGS:\n${rendered}`;
+}
 
-Use ONLY these numeric facts (do not invent figures):
-- Free Cash Flow Yield: ${fmt(m.fcf_yield_pct, "%")} (market avg ~4%)
-- Price-to-Book: ${fmt(m.pb_ratio)} (sector proxy ${fmt(m.sector_pb_median_proxy)})
-- Price-to-Sales: ${fmt(m.ps_ratio)}
-- FCF / Net Income: ${fmt(m.fcf_vs_earnings_ratio)}
-- Debt / EBITDA: ${fmt(m.debt_to_ebitda)}x
-- P/E (trailing): ${fmt(m.pe_ratio)}
+const FLAG_HANDLING = `FLAG HANDLING:
+- If a HARD-flagged metric is your PRIMARY signal, reduce your confidence by 25 points (floor 50).
+- You may still vote BUY or SELL on a hard-flagged primary signal ONLY if you can cite at least 2 independent, non-flagged metrics in your thesis that support the same direction. Otherwise default to HOLD with confidence ≤ 50 and explain in key_risk.
+- SOFT flags should temper conviction (-10 confidence) but do not force HOLD.
+- Always reference metrics using their canonical field names from SHARED FACTS (e.g. roe_pct, not "ROE").
+- key_risk must name which flagged metrics you relied on, if any.`;
 
-Output strict JSON only with keys: recommendation (BUY|HOLD|SELL), confidence (0-100 integer), thesis (string, max 2 sentences), key_metric (string), key_risk (string).
-Base recommendation ONLY on the numbers above. Temperature 0 discipline: same numbers => same recommendation class.`,
+const OUTPUT_INSTRUCTION = `OUTPUT:
+Return strict JSON only with keys: recommendation (BUY|HOLD|SELL), confidence (0-100 integer), thesis (string, max 2 sentences), key_metric (string — cite a canonical field name from SHARED FACTS), key_risk (string).
+Temperature 0 discipline: same numbers => same recommendation class.`;
 
-  momentum: (m) => `${dataPreamble(m)}You are a momentum trader analyzing ${m.ticker}.
+interface PersonaSpec {
+  lens: string;
+  focus: string[];
+  rules: string;
+}
 
-Core belief: Trends persist over 3–12 months when price and flows align.
-
-Use ONLY these facts:
-- 12-Month Return (approx from daily history): ${fmt(m.momentum_12m_pct, "%")}
-- Price vs 200-day MA: price ${fmt(m.price)}, MA200 ${fmt(m.ma_200)}, distance ${fmt(m.price_vs_ma_200_pct, "%")}
-- Price vs 50-day MA distance: ${fmt(m.price_vs_ma_50_pct, "%")}
-- Insider buys (3mo): ${m.insider_buys_3mo ?? "N/A"}, sells: ${m.insider_sells_3mo ?? "N/A"}
-- News sentiment placeholder: ${m.news_sentiment_score ?? 50} (50 neutral)
-
-Output strict JSON only: recommendation (BUY|HOLD|SELL), confidence (0-100), thesis (<=2 sentences), key_metric, key_risk.
-If momentum_12m is strongly positive and price > MA200, lean BUY unless extended; if strongly negative and below MA200, lean SELL.`,
-
-  quality: (m) => `${dataPreamble(m)}You are a quality investor analyzing ${m.ticker}.
-
-Core belief: Quality compounds via moat, ROE, and predictable earnings.
-
-Facts:
-- ROE: ${fmt(m.roe_pct, "%")} (sector proxy ${fmt(m.sector_roe_median_proxy, "%")})
-- Earnings volatility (coeff of var, quarterly NI): ${fmt(m.earnings_volatility_coeff)}
-- Debt-to-Equity: ${fmt(m.debt_to_equity)}
-- Net margin: ${fmt(m.net_margin_pct, "%")}
-
-Output strict JSON: recommendation, confidence, thesis, key_metric, key_risk.
-High ROE + low leverage + stable earnings => BUY bias; deteriorating margins => caution.`,
-
-  contrarian: (m) => `${dataPreamble(m)}You are a contrarian / mean-reversion investor analyzing ${m.ticker}.
-
-Facts:
-- P/E vs modeled long-run anchor (trailing vs ~0.92×trailing proxy): ratio ${fmt(m.pe_vs_5y_avg_ratio)}
-- Dividend yield now: ${fmt(m.dividend_yield_pct, "%")} vs 5y avg yield ${fmt(m.div_yield_5y_avg_pct, "%")}
-- Dividend yield vs 5y avg ratio: ${fmt(m.div_yield_vs_5y_avg_ratio)}
-- Analyst tension (sell+strongSell vs buy+strongBuy heuristic): downgrades signal ${m.analyst_downgrades_3mo}
-- Short % of float: ${fmt(m.short_interest_pct, "%")} (sector proxy ${fmt(m.sector_short_median_proxy, "%")})
-
-Output strict JSON: recommendation, confidence, thesis, key_metric, key_risk.
-Avoid BUY if fundamentals look like a value trap (use margins and leverage context from other fields implicitly via numbers only).`,
-
-  macro: (m) => `${dataPreamble(m)}You are a macro / duration investor analyzing ${m.ticker}.
-
-Facts:
-- 10-Year Treasury yield (%): ${fmt(m.treasury_10y_pct)}
-- Beta: ${fmt(m.beta)}
-- Dividend yield vs Treasury spread (pts): ${fmt(m.yield_spread_vs_treasury_pct)}
-- Earnings growth (Yahoo feed): ${fmt(m.earnings_growth_consensus_pct, "%")}
-
-Output strict JSON: recommendation, confidence, thesis, key_metric, key_risk.
-Rising rates hurt high-beta, long-duration cash flows; defensives with yield spread attractive do better.`,
-
-  lowvol: (m) => `${dataPreamble(m)}You are a defensive / low-volatility investor analyzing ${m.ticker}.
-
-Facts:
-- Beta: ${fmt(m.beta)}
-- Downside volatility proxy (semi-dev, daily returns): ${fmt(m.semi_deviation_monthly)}
-- Earnings stability (coeff var): ${fmt(m.earnings_volatility_coeff)}
-- Cash % of assets: ${fmt(m.cash_pct_of_assets, "%")}
-
-Output strict JSON: recommendation, confidence, thesis, key_metric, key_risk.
-BUY means "acceptable defensive ballast"; SELL if risk looks mispriced vs stability.`,
+const PERSONAS: Record<AgentKind, PersonaSpec> = {
+  value: {
+    lens: "You are a value investor. The market may misprice fundamentals; find bargains where free cash flow and earnings power exceed the market price.",
+    focus: [
+      "fcf_yield_pct",
+      "pb_ratio",
+      "ps_ratio",
+      "fcf_vs_earnings_ratio",
+      "debt_to_ebitda",
+      "pe_ratio",
+      "sector_pb_median_proxy",
+    ],
+    rules:
+      "DECISION RULES:\n- High fcf_yield_pct (>6%) with healthy fcf_vs_earnings_ratio (0.7-1.3) and moderate debt_to_ebitda (<3) supports BUY.\n- Stretched pb_ratio or ps_ratio relative to sector_pb_median_proxy without cash-flow support argues SELL/HOLD.\n- Ignore narrative; base recommendation on the numbers.",
+  },
+  momentum: {
+    lens: "You are a momentum trader. Trends in price and fundamentals persist over 3-12 months when they align.",
+    focus: [
+      "momentum_12m_pct",
+      "price_vs_ma_200_pct",
+      "price_vs_ma_50_pct",
+      "price",
+      "ma_50",
+      "ma_200",
+      "earnings_growth_consensus_pct",
+    ],
+    rules:
+      "DECISION RULES:\n- Strongly positive momentum_12m_pct with price > ma_200 (positive price_vs_ma_200_pct) leans BUY unless extended.\n- Strongly negative momentum_12m_pct with price < ma_200 leans SELL.\n- Flat trend or conflicting MA signals => HOLD.",
+  },
+  quality: {
+    lens: "You are a quality investor. Quality compounds via moat, high ROE, and predictable earnings.",
+    focus: [
+      "roe_pct",
+      "net_margin_pct",
+      "debt_to_equity",
+      "earnings_volatility_coeff",
+      "sector_roe_median_proxy",
+      "fcf_vs_earnings_ratio",
+    ],
+    rules:
+      "DECISION RULES:\n- Durable roe_pct above sector_roe_median_proxy with low debt_to_equity and low earnings_volatility_coeff => BUY bias.\n- Deteriorating net_margin_pct or rising debt_to_equity argues caution.\n- Weak fcf_vs_earnings_ratio (<0.6) undermines reported quality.",
+  },
+  contrarian: {
+    lens: "You are a contrarian / mean-reversion investor. Sentiment extremes and valuation gaps revert; you look for mispricings against a stock's own history.",
+    focus: [
+      "pe_ratio",
+      "pe_vs_5y_avg_ratio",
+      "dividend_yield_pct",
+      "div_yield_vs_5y_avg_ratio",
+      "short_interest_pct",
+      "analyst_downgrades_3mo",
+    ],
+    rules:
+      "DECISION RULES:\n- pe_vs_5y_avg_ratio < 0.8 with div_yield_vs_5y_avg_ratio > 1.1 hints at unloved-but-cheap => BUY bias, unless fundamentals confirm a value trap.\n- Elevated short_interest_pct vs sector_short_median_proxy plus rising analyst_downgrades_3mo can still be contrarian BUY if cash-flow metrics are intact.\n- Avoid BUY when pe_ratio is extended and margins/leverage (net_margin_pct, debt_to_equity) have deteriorated.",
+  },
+  macro: {
+    lens: "You are a macro / duration investor. Rates, beta, and yield spreads dominate the tape for long-duration cash flows.",
+    focus: [
+      "treasury_10y_pct",
+      "beta",
+      "yield_spread_vs_treasury_pct",
+      "earnings_growth_consensus_pct",
+      "dividend_yield_pct",
+    ],
+    rules:
+      "DECISION RULES:\n- Rising treasury_10y_pct hurts high-beta, long-duration cash flows; trim BUY conviction on high-beta names.\n- Positive yield_spread_vs_treasury_pct with low beta is attractive for income-oriented macro BUY.\n- Weak earnings_growth_consensus_pct combined with rich valuation argues SELL/HOLD.",
+  },
+  lowvol: {
+    lens: "You are a defensive / low-volatility investor. Your job is ballast: accept lower upside for tighter drawdowns.",
+    focus: [
+      "beta",
+      "semi_deviation_monthly",
+      "earnings_volatility_coeff",
+      "cash_pct_of_assets",
+      "debt_to_equity",
+    ],
+    rules:
+      "DECISION RULES:\n- Low beta, low semi_deviation_monthly, low earnings_volatility_coeff and healthy cash_pct_of_assets => acceptable defensive ballast (BUY-leaning).\n- Elevated beta or semi_deviation_monthly with thin cash_pct_of_assets and high debt_to_equity => SELL from a defensive sleeve.\n- BUY here means 'fits a defensive sleeve', not 'high expected return'.",
+  },
 };
 
+function renderPrompt(kind: AgentKind, m: StockMetricsPayload): string {
+  const persona = PERSONAS[kind];
+  const focusLine = `FOCUS METRICS (prioritize these, but you may cite any field from SHARED FACTS): ${persona.focus.join(", ")}`;
+  return `${dataPreamble(m)}${sharedFacts(m)}
+
+${flagsSection(m)}
+
+AGENT LENS: ${persona.lens}
+
+${focusLine}
+
+${persona.rules}
+
+${FLAG_HANDLING}
+
+${OUTPUT_INSTRUCTION}`;
+}
+
 export function buildAgentSystemPrompt(kind: AgentKind, metrics: StockMetricsPayload): string {
-  return templates[kind](metrics);
+  return renderPrompt(kind, metrics);
 }

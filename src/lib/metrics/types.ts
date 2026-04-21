@@ -6,6 +6,18 @@ export type AgentKind =
   | "macro"
   | "lowvol";
 
+export type MetricFamily = "fundamental" | "price" | "macro";
+
+export interface MetricFlag {
+  /** Field name from StockMetricsPayload, e.g. "roe_pct" */
+  metric: string;
+  value: number | null;
+  severity: "soft" | "hard";
+  family: MetricFamily;
+  /** Human-readable rationale for the flag */
+  reason: string;
+}
+
 export interface StockMetricsPayload {
   ticker: string;
   currency: string | null;
@@ -56,4 +68,5 @@ export interface StockMetricsPayload {
   earnings_growth_consensus_pct: number | null;
   earnings_consensus_std_pct: number | null;
   data_warnings: string[];
+  metric_flags: MetricFlag[];
 }

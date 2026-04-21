@@ -3,6 +3,7 @@ import type { StockMetricsPayload } from "@/lib/metrics/types";
 import type { AgentKind } from "@/lib/metrics/types";
 import { buildAgentSystemPrompt } from "./prompts";
 import { parseAgentOutput, parseAgentFields, type ParsedAgent } from "./parseJson";
+import { groundVote } from "./groundVote";
 import type { AgentVote } from "@/lib/consensus";
 
 const KINDS: AgentKind[] = [
@@ -173,6 +174,7 @@ export async function runAllAgentsWithDiagnostics(
     }
 
     if (vote) {
+      vote = groundVote(vote, metrics, k);
       votes.push(vote);
       await sleep(120);
       continue;

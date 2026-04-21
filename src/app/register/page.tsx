@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -60,9 +61,9 @@ export default function RegisterPage() {
           {loading ? "…" : "Register"}
         </button>
       </form>
-      <a href="/" className="text-center text-sm text-zinc-500 hover:text-zinc-300">
+      <Link href="/" className="text-center text-sm text-zinc-500 hover:text-zinc-300">
         Back home
-      </a>
+      </Link>
     </div>
   );
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { SellModal, type SellFillResult } from "@/components/portfolio/SellModal";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -53,6 +55,10 @@ export default function PortfolioPage() {
   const [saving, setSaving] = useState(false);
   const [savingOutcome, setSavingOutcome] = useState(false);
   const [quotesLoading, setQuotesLoading] = useState(false);
+  const [sellOpen, setSellOpen] = useState(false);
+  const [sellPosition, setSellPosition] = useState<Position | null>(null);
+  const [notice, setNotice] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [removeBusyId, setRemoveBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/portfolio");
@@ -91,11 +97,15 @@ export default function PortfolioPage() {
   }, [tickers]);
 
   useEffect(() => {
-    load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   useEffect(() => {
-    void refreshQuotes();
+    queueMicrotask(() => {
+      void refreshQuotes();
+    });
   }, [refreshQuotes]);
 
   const portfolioTotals = useMemo(() => {
@@ -147,6 +157,39 @@ export default function PortfolioPage() {
     load();
   }
 
+  function formatSellBanner(r: SellFillResult) {
+    const pnl = r.realized_pnl >= 0 ? "+" : "";
+    const tail = r.closed ? " · position closed" : " · partial fill";
+    return `Sold ${r.shares_sold} ${r.ticker} @ market · est. P/L ${pnl}${formatMoney(r.realized_pnl, r.currency)}${tail}`;
+  }
+
+  async function removePosition(id: string, symbol: string) {
+    if (
+      !confirm(
+        `Remove ${symbol} from your portfolio?\n\nThis deletes the row only (no sell, no tax-lot logic). Use Sell to close at market.`,
+      )
+    ) {
+      return;
+    }
+    setNotice(null);
+    setRemoveBusyId(id);
+    try {
+      const res = await fetch(`/api/portfolio/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        setNotice({
+          kind: "err",
+          text: data.detail ? `${data.error}: ${data.detail}` : data.error ?? "Remove failed",
+        });
+        return;
+      }
+      setNotice({ kind: "ok", text: `${symbol} removed from portfolio.` });
+      await load();
+    } finally {
+      setRemoveBusyId(null);
+    }
+  }
+
   async function logOutcome(e: React.FormEvent) {
     e.preventDefault();
     setOutcomeMsg(null);
@@ -183,15 +226,15 @@ export default function PortfolioPage() {
             Investing
           </h1>
           <p className="mt-1 text-sm text-[var(--rh-ink-soft)]">
-            Yahoo Finance quotes (unofficial) · delayed on many symbols
+            Paper portfolio: buys add lots, sells fill at Yahoo last price, removes delete rows — not a broker.
           </p>
         </div>
-        <a
+        <Link
           href="/"
           className="rounded-full border-2 border-[var(--rh-ink)] bg-[var(--rh-surface)] px-4 py-2 text-sm font-bold text-[var(--rh-ink)] shadow-[var(--retro-shadow-sm)] transition hover:-translate-y-0.5"
         >
           ← Council
-        </a>
+        </Link>
       </header>
 
       <section className="rounded-2xl border-2 border-[var(--rh-border)] bg-[var(--rh-surface)] p-6 shadow-[var(--retro-shadow)]">
@@ -224,6 +267,18 @@ export default function PortfolioPage() {
         </div>
       </section>
 
+      {notice && (
+        <div
+          className={`rounded-xl border-2 px-4 py-3 text-sm font-medium ${
+            notice.kind === "err"
+              ? "border-[var(--rh-negative)] bg-red-50 text-[var(--rh-negative)]"
+              : "border-[var(--rh-green)] bg-emerald-50 text-[var(--rh-ink)]"
+          }`}
+        >
+          {notice.text}
+        </div>
+      )}
+
       <ul className="flex flex-col gap-3">
         {positions.map((p) => {
           const t = p.ticker.toUpperCase();
@@ -239,41 +294,65 @@ export default function PortfolioPage() {
           return (
             <li
               key={p.id}
-              className="flex flex-col gap-3 rounded-2xl border-2 border-[var(--rh-border)] bg-white p-4 shadow-[var(--retro-shadow-sm)] sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 rounded-2xl border-2 border-[var(--rh-border)] bg-white p-4 shadow-[var(--retro-shadow-sm)]"
             >
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--rh-surface-muted)] font-mono text-sm font-bold text-[var(--rh-ink)]">
-                  {t.slice(0, 4)}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--rh-surface-muted)] font-mono text-sm font-bold text-[var(--rh-ink)]">
+                    {t.slice(0, 4)}
+                  </div>
+                  <div>
+                    <p className="font-mono text-lg font-bold tracking-tight text-[var(--rh-ink)]">{t}</p>
+                    <p className="text-xs text-[var(--rh-ink-soft)]">
+                      {sh} shares · avg {formatMoney(cb, q?.currency ?? "USD")} · entry {p.entry_date}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-mono text-lg font-bold tracking-tight text-[var(--rh-ink)]">{t}</p>
-                  <p className="text-xs text-[var(--rh-ink-soft)]">
-                    {sh} shares · cost {formatMoney(cb, q?.currency ?? "USD")} · entry {p.entry_date}
+                <div className="text-right sm:text-right">
+                  <p className="font-mono text-xl font-bold tabular-nums text-[var(--rh-ink)]">
+                    {px !== null ? formatMoney(px, q?.currency ?? "USD") : "—"}
                   </p>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--rh-ink-soft)]">Last</p>
+                  <div className="mt-1 flex flex-wrap justify-end gap-2 text-xs font-medium">
+                    {dayChg != null && (
+                      <span className={dayChg >= 0 ? "text-[var(--rh-positive)]" : "text-[var(--rh-negative)]"}>
+                        {dayChg >= 0 ? "+" : ""}
+                        {dayChg.toFixed(2)}% today
+                      </span>
+                    )}
+                    {posPnl !== null && (
+                      <span
+                        className={
+                          posPnl >= 0 ? "text-[var(--rh-positive)]" : "text-[var(--rh-negative)]"
+                        }
+                      >
+                        {posPnl >= 0 ? "+" : ""}
+                        {formatMoney(posPnl)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="font-mono text-xl font-bold tabular-nums text-[var(--rh-ink)]">
-                  {px !== null ? formatMoney(px, q?.currency ?? "USD") : "—"}
-                </p>
-                <div className="mt-1 flex flex-wrap justify-end gap-2 text-xs font-medium">
-                  {dayChg != null && (
-                    <span className={dayChg >= 0 ? "text-[var(--rh-positive)]" : "text-[var(--rh-negative)]"}>
-                      {dayChg >= 0 ? "+" : ""}
-                      {dayChg.toFixed(2)}% today
-                    </span>
-                  )}
-                  {posPnl !== null && (
-                    <span
-                      className={
-                        posPnl >= 0 ? "text-[var(--rh-positive)]" : "text-[var(--rh-negative)]"
-                      }
-                    >
-                      {posPnl >= 0 ? "+" : ""}
-                      {formatMoney(posPnl)}
-                    </span>
-                  )}
-                </div>
+              <div className="flex flex-wrap gap-2 border-t border-[var(--rh-border)] pt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotice(null);
+                    setSellPosition(p);
+                    setSellOpen(true);
+                  }}
+                  className="rounded-lg bg-[var(--rh-negative)] px-4 py-2 text-xs font-bold text-white hover:opacity-95"
+                >
+                  Sell
+                </button>
+                <button
+                  type="button"
+                  disabled={removeBusyId === p.id}
+                  onClick={() => void removePosition(p.id, t)}
+                  className="rounded-lg border-2 border-[var(--rh-border)] bg-[var(--rh-surface-muted)] px-4 py-2 text-xs font-bold text-[var(--rh-ink)] hover:bg-white disabled:opacity-50"
+                >
+                  {removeBusyId === p.id ? "Removing…" : "Remove"}
+                </button>
               </div>
             </li>
           );
@@ -353,12 +432,16 @@ export default function PortfolioPage() {
           value={analysisId}
           onChange={(e) => setAnalysisId(e.target.value)}
         >
-          {analyses.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.ticker} · {a.final_recommendation} ({a.consensus_confidence}%) ·{" "}
-              {new Date(a.analysis_date).toLocaleDateString()}
-            </option>
-          ))}
+          {analyses.length === 0 ? (
+            <option value="">No analyses yet</option>
+          ) : (
+            analyses.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.ticker} · {a.final_recommendation} ({a.consensus_confidence}%) ·{" "}
+                {new Date(a.analysis_date).toLocaleDateString()}
+              </option>
+            ))
+          )}
         </select>
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <select
@@ -400,6 +483,22 @@ export default function PortfolioPage() {
       <footer className="border-t border-[var(--rh-border)] pt-4 text-center text-[10px] text-[var(--rh-ink-soft)]">
         Quotes via Yahoo (unofficial). For entertainment only — not financial advice.
       </footer>
+
+      {sellOpen && sellPosition && (
+        <SellModal
+          key={sellPosition.id}
+          position={sellPosition}
+          quote={quotes[sellPosition.ticker.toUpperCase()]}
+          onClose={() => {
+            setSellOpen(false);
+            setSellPosition(null);
+          }}
+          onSold={(r) => {
+            setNotice({ kind: "ok", text: formatSellBanner(r) });
+            void load();
+          }}
+        />
+      )}
     </div>
   );
 }

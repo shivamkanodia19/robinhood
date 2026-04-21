@@ -2,15 +2,6 @@ import { describe, it, expect } from "vitest";
 import { buildWeightedConsensus, computeConvictionChange } from "./phase2";
 import type { AgentVote } from "./consensus";
 
-const votes: AgentVote[] = [
-  { agent: "value", recommendation: "BUY", confidence: 80, thesis: "", key_metric: "", key_risk: "" },
-  { agent: "momentum", recommendation: "BUY", confidence: 75, thesis: "", key_metric: "", key_risk: "" },
-  { agent: "quality", recommendation: "HOLD", confidence: 65, thesis: "", key_metric: "", key_risk: "" },
-  { agent: "contrarian", recommendation: "SELL", confidence: 55, thesis: "", key_metric: "", key_risk: "" },
-  { agent: "macro", recommendation: "HOLD", confidence: 60, thesis: "", key_metric: "", key_risk: "" },
-  { agent: "lowvol", recommendation: "BUY", confidence: 70, thesis: "", key_metric: "", key_risk: "" },
-];
-
 describe("phase2 weighted consensus", () => {
   it("changes output by profile weights", () => {
     const profileSensitiveVotes: AgentVote[] = [
@@ -26,6 +17,10 @@ describe("phase2 weighted consensus", () => {
     expect(value.profile).toBe("value");
     expect(momentum.profile).toBe("momentum");
     expect(value.weighted_score).not.toBe(momentum.weighted_score);
+    expect(value.data_quality_penalty).toBe(0);
+    expect(value.data_quality_note).toBe("");
+    expect(momentum.data_quality_penalty).toBe(0);
+    expect(momentum.data_quality_note).toBe("");
   });
 
   it("computes conviction direction", () => {
